@@ -1,0 +1,33 @@
+---
+Checks:
+'
+*,
+clang-diagnostic-*,
+clang-analyzer-*,
+-clang-diagnostic-pragma-once-outside-header,
+-llvm-header-guard,
+-fuchsia-default-arguments-calls,
+-fuchsia-default-arguments-declarations,
+-fuchsia-multiple-inheritance,
+-fuchsia-overloaded-operator,
+-fuchsia-trailing-return,
+-hicpp-uppercase-literal-suffix,
+-google-default-arguments,
+-google-objc*,
+-google-readability-todo,
+-google-runtime-references,
+-modernize-use-trailing-return-type,
+-objc-property-declaration,
+-readability-implicit-bool-cast,
+-readability-uppercase-literal-suffix
+'
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+AnalyzeTemporaryDtors: false
+FormatStyle:     file
+CheckOptions:    
+  - key:             cppcoreguidelines-pro-type-member-init.IgnoreArrays
+    value:           '1'
+  - key: 			 misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value:           '1'
+...
