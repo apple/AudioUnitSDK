@@ -351,7 +351,7 @@ public:
 
 private:
 	constexpr static size_t kHeaderSize = offsetof(AudioChannelLayout, mChannelDescriptions[0]);
-	std::vector<std::byte> mStorage;
+	std::vector<unsigned char> mStorage;
 };
 
 // -------------------------------------------------------------------------------------------------

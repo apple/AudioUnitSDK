@@ -147,7 +147,7 @@ static OSStatus AUMethodGetProperty(void* self, AudioUnitPropertyID inID, AudioU
 			return result;
 		}
 
-		std::vector<std::byte> tempBuffer;
+		std::vector<unsigned char> tempBuffer;
 		void* destBuffer = nullptr;
 		if (clientBufferSize < actualPropertySize) {
 			tempBuffer.resize(actualPropertySize);
