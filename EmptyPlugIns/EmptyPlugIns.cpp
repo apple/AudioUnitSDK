@@ -14,10 +14,7 @@ class AUBase_Derived : public ausdk::AUBase {
 public:
 	explicit AUBase_Derived(AudioComponentInstance ci) : Base{ ci, 1, 1 } {}
 
-	bool StreamFormatWritable(AudioUnitScope scope, AudioUnitElement element) override
-	{
-		return true;
-	}
+	bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
 
 	bool CanScheduleParameters() const override { return false; }
 };
@@ -43,10 +40,7 @@ class MusicDeviceBase_Derived : public ausdk::MusicDeviceBase {
 public:
 	explicit MusicDeviceBase_Derived(AudioComponentInstance ci) : Base{ ci, 0, 1 } {}
 
-	bool StreamFormatWritable(AudioUnitScope scope, AudioUnitElement element) override
-	{
-		return true;
-	}
+	bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
 
 	bool CanScheduleParameters() const override { return false; }
 };
