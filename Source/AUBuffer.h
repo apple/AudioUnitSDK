@@ -87,9 +87,9 @@ public:
 		mPtrState = EPtrState::ToExternalMemory;
 		auto& myabl = mBuffers->mAudioBufferList;
 		memcpy(&myabl, &abl,
-			static_cast<size_t>(
-				reinterpret_cast<const std::byte*>(&abl.mBuffers[abl.mNumberBuffers]) - // NOLINT
-				reinterpret_cast<const std::byte*>(&abl)));                             // NOLINT
+			static_cast<size_t>(reinterpret_cast<const unsigned char*>(         // NOLINT
+									&abl.mBuffers[abl.mNumberBuffers]) -        // NOLINT
+								reinterpret_cast<const unsigned char*>(&abl))); // NOLINT
 		return myabl;
 	}
 
@@ -114,8 +114,8 @@ public:
 		AUSDK_ThrowIf(mPtrState == EPtrState::Invalid, -1);
 		memcpy(&abl, &mBuffers->mAudioBufferList,
 			static_cast<size_t>(
-				reinterpret_cast<std::byte*>(&abl.mBuffers[abl.mNumberBuffers]) - // NOLINT
-				reinterpret_cast<std::byte*>(&abl)));                             // NOLINT
+				reinterpret_cast<unsigned char*>(&abl.mBuffers[abl.mNumberBuffers]) - // NOLINT
+				reinterpret_cast<unsigned char*>(&abl)));                             // NOLINT
 	}
 
 	void CopyBufferContentsTo(AudioBufferList& destabl) const

@@ -132,7 +132,8 @@ void AUElement::SaveState(AudioUnitScope scope, CFMutableDataRef data)
 			UInt32 paramID;
 			UInt32 value; // really a big-endian float
 		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
+		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)),
+			"entry must not have any padding");
 
 		if (mAudioUnit.GetParameterInfo(scope, paramID, paramInfo) == noErr) {
 			if ((paramInfo.flags & kAudioUnitParameterFlag_CFNameRelease) != 0u) {
@@ -193,7 +194,8 @@ const UInt8* AUElement::RestoreState(const UInt8* state)
 			AudioUnitParameterID paramID;
 			AudioUnitParameterValue value;
 		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
+		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)),
+			"entry must not have any padding");
 
 		entry.paramID = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
 		p += sizeof(UInt32);                                                       // NOLINT
@@ -401,7 +403,8 @@ void AUScope::SaveState(CFMutableDataRef data) const
 				const UInt32 element;
 			} hdr{ .scope = CFSwapInt32HostToBig(GetScope()),
 				.element = CFSwapInt32HostToBig(ielem) };
-			static_assert(sizeof(hdr) == (sizeof(hdr.scope) + sizeof(hdr.element)));
+			static_assert(sizeof(hdr) == (sizeof(hdr.scope) + sizeof(hdr.element)),
+				"hdr must not have any padding");
 			CFDataAppendBytes(data, reinterpret_cast<const UInt8*>(&hdr), sizeof(hdr)); // NOLINT
 
 			element->SaveState(mScope, data);
@@ -420,7 +423,8 @@ const UInt8* AUScope::RestoreState(const UInt8* state) const
 			AudioUnitParameterID paramID;
 			AudioUnitParameterValue value;
 		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
+		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)),
+			"entry must not have any padding");
 		const UInt32 nparams = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
 		p += sizeof(UInt32);                                                              // NOLINT
 

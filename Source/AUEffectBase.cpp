@@ -266,15 +266,15 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 	// we just partially processed the buffers, so increment the data pointers to the next part of
 	// the buffer to process
 	for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
-		inputBufferList.mBuffers[i].mData =                              // NOLINT
-			static_cast<std::byte*>(inputBufferList.mBuffers[i].mData) + // NOLINT
-			inputBufferList.mBuffers[i].mNumberChannels * channelSize;   // NOLINT
+		inputBufferList.mBuffers[i].mData =                                  // NOLINT
+			static_cast<unsigned char*>(inputBufferList.mBuffers[i].mData) + // NOLINT
+			inputBufferList.mBuffers[i].mNumberChannels * channelSize;       // NOLINT
 	}
 
 	for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
-		outputBufferList.mBuffers[i].mData =                              // NOLINT
-			static_cast<std::byte*>(outputBufferList.mBuffers[i].mData) + // NOLINT
-			outputBufferList.mBuffers[i].mNumberChannels * channelSize;   // NOLINT
+		outputBufferList.mBuffers[i].mData =                                  // NOLINT
+			static_cast<unsigned char*>(outputBufferList.mBuffers[i].mData) + // NOLINT
+			outputBufferList.mBuffers[i].mNumberChannels * channelSize;       // NOLINT
 	}
 
 	return result;
@@ -331,17 +331,18 @@ OSStatus AUEffectBase::Render(
 				const UInt32 channelSize = nFrames * mBytesPerFrame;
 				for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
 					const UInt32 size =
-						inputBufferList.mBuffers[i].mNumberChannels * channelSize;         // NOLINT
-					inputBufferList.mBuffers[i].mData =                                    // NOLINT
-						static_cast<std::byte*>(inputBufferList.mBuffers[i].mData) - size; // NOLINT
-					inputBufferList.mBuffers[i].mDataByteSize = size;                      // NOLINT
+						inputBufferList.mBuffers[i].mNumberChannels * channelSize;       // NOLINT
+					inputBufferList.mBuffers[i].mData =                                  // NOLINT
+						static_cast<unsigned char*>(inputBufferList.mBuffers[i].mData) - // NOLINT
+						size;                                                            // NOLINT
+					inputBufferList.mBuffers[i].mDataByteSize = size;                    // NOLINT
 				}
 
 				for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
 					const UInt32 size =
 						outputBufferList.mBuffers[i].mNumberChannels * channelSize; // NOLINT
 					outputBufferList.mBuffers[i].mData =                            // NOLINT
-						static_cast<std::byte*>(outputBufferList.mBuffers[i].mData) -
+						static_cast<unsigned char*>(outputBufferList.mBuffers[i].mData) -
 						size;                                          // NOLINT
 					outputBufferList.mBuffers[i].mDataByteSize = size; // NOLINT
 				}

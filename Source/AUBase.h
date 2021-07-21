@@ -372,8 +372,8 @@ public:
 	OSStatus CallHostBeatAndTempo(Float64* outCurrentBeat, Float64* outCurrentTempo) const
 	{
 		return (mHostCallbackInfo.beatAndTempoProc != nullptr
-					? (*mHostCallbackInfo.beatAndTempoProc)(mHostCallbackInfo.hostUserData,
-						  outCurrentBeat, outCurrentTempo)
+					? (*mHostCallbackInfo.beatAndTempoProc)(
+						  mHostCallbackInfo.hostUserData, outCurrentBeat, outCurrentTempo)
 					: -1);
 	}
 
@@ -646,13 +646,13 @@ private:
 	public:
 		void add(const RenderCallback& rc)
 		{
-			const std::lock_guard guard{ mLock };
+			const std::lock_guard<AUMutex> guard{ mLock };
 			mImpl.emplace_back(rc);
 		}
 
 		void remove(const RenderCallback& rc)
 		{
-			const std::lock_guard guard{ mLock };
+			const std::lock_guard<AUMutex> guard{ mLock };
 			const auto iter = std::find(mImpl.begin(), mImpl.end(), rc);
 			if (iter != mImpl.end()) {
 				mImpl.erase(iter);
@@ -662,7 +662,7 @@ private:
 		template <typename F>
 		void foreach (F&& func)
 		{
-			const std::lock_guard guard{ mLock };
+			const std::lock_guard<AUMutex> guard{ mLock };
 			for (const auto& cb : mImpl) {
 				func(cb);
 			}

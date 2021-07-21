@@ -88,7 +88,8 @@
 
 #define AUSDK_Require_noerr(expr) /* NOLINT(cppcoreguidelines-macro-usage) */                      \
 	do {                                                                                           \
-		if (const auto status_tmp_macro_detail_ = (expr); status_tmp_macro_detail_ != noErr) {     \
+		const auto status_tmp_macro_detail_ = (expr);                                              \
+		if (status_tmp_macro_detail_ != noErr) {                                                   \
 			return status_tmp_macro_detail_;                                                       \
 		}                                                                                          \
 	} while (0)
@@ -351,7 +352,7 @@ public:
 
 private:
 	constexpr static size_t kHeaderSize = offsetof(AudioChannelLayout, mChannelDescriptions[0]);
-	std::vector<std::byte> mStorage;
+	std::vector<unsigned char> mStorage;
 };
 
 // -------------------------------------------------------------------------------------------------
