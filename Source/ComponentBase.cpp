@@ -42,7 +42,7 @@ OSStatus ComponentBase::AP_Open(void* self, AudioComponentInstance compInstance)
 	OSStatus result = noErr;
 	const auto acpi = static_cast<AudioComponentPlugInInstance*>(self);
 	try {
-		const std::lock_guard guard{ InitializationMutex() };
+		const std::lock_guard<std::recursive_mutex> guard{ InitializationMutex() };
 
 		auto* const cb =
 			static_cast<ComponentBase*>((*acpi->mConstruct)(&acpi->mInstanceStorage, compInstance));
