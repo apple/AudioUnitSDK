@@ -11,7 +11,7 @@ The AudioUnitSDK contains a set of base classes as well as utility sources requi
 ## Building the project
 1. Open AudioUnitSDK.xcodeproj
 2. Build the AudioUnitSDK target
-3. Add headers from $(BUILT_PRODUCTS_DIR)/usr/local/include/AudioUnitSDK to your projects include path
+3. Add the `include` folder to your projects Header Search Paths
 4. Link libAudioUnitSDK.a to your project
 
 
@@ -19,5 +19,17 @@ Alternatively, you can add the AudioUnitSDK source directly to your project and 
 
 ## Supported Deployment Targets
 macOS (OS X) 10.9 / iOS 9.0 or later.
+
+## Changelog
+
+### Version 1.1.0
+
+The `Source` folder was split in two folders: `include` for public headers, and `src` for private source files.
+Users building the AudioUnitSDK sources from within their Xcode project should update the source file locations and change the include path to `path/to/AudioUnitSDK/include`. 
+Include directives should be prefixed with AudioUnitSDK (i.e. `#include "AudioUnitSDK/AUBase.h"` instead of `#include "AUBase.h"`).
+
+### Version 1.0.0
+
+Initial upload.
 
 Copyright (C) 2021 Apple Inc. All rights reserved.

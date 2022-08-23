@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/zsh
 # This pre-commit hook uses clang-format to format the staged changes.
 
 if ! git rev-parse --verify HEAD >/dev/null 2>&1
@@ -9,19 +9,12 @@ fi
 
 set -e
 
-# do the formatting
 REPO_ROOT=$(git rev-parse --show-toplevel)
 DIFF_ARGS="--name-only --diff-filter=ACMRT"
-while read -r FILE
+git diff-index ${=DIFF_ARGS} --cached HEAD | grep -E "\.(h|hpp|c|cpp|m|mm)$" | while read -r FILE
 do
-	# an empty line read is possible when the input is empty
-	if [[ -z $FILE ]] 
-	then
-		continue
-	fi
-
 	FILE_PATH="${REPO_ROOT}"/"${FILE}"
-	if [[ `git diff $DIFF_ARGS "${FILE_PATH}"` == $FILE ]]
+	if [[ `git diff ${=DIFF_ARGS} "${FILE_PATH}"` == $FILE ]]
 	then
 		echo -e "\xF0\x9F\x94\xA5 \xE2\x98\xA0 \xF0\x9F\x94\xA5 WARNING: creating a stash for file due to unstaged changes: ${FILE}"
 		# format before stashing to avoid a merge conflict when applying the stash after commit
@@ -31,4 +24,4 @@ do
 
 	xcrun clang-format -i "${FILE_PATH}"
 	git add "${FILE_PATH}"
-done <<< "`git diff-index $DIFF_ARGS --cached HEAD | grep -E "\.(h|hpp|c|cpp|m|mm)$"`"
+done

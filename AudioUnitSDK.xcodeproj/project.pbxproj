@@ -3,11 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 50;
+	objectVersion = 54;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		394A97042576BF1700897571 /* AUMIDIUtility.h in Headers */ = {isa = PBXBuildFile; fileRef = 394A97032576BF1700897571 /* AUMIDIUtility.h */; };
+		394A97042576BF1700897571 /* AUMIDIUtility.h in Headers */ = {isa = PBXBuildFile; fileRef = 394A97032576BF1700897571 /* AUMIDIUtility.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		9100832E24DF0EB6003E57AE /* AUInputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC75924D9181600725ABE /* AUInputElement.cpp */; };
 		9100832F24DF0EE7003E57AE /* AUOutputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC75824D9181600725ABE /* AUOutputElement.cpp */; };
 		9100833024DF0F2C003E57AE /* AUBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC76224D9181600725ABE /* AUBase.cpp */; };
@@ -146,21 +146,22 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		9100837324E06B8F003E57AE /* Tools */ = {
+		9100837324E06B8F003E57AE /* tools */ = {
 			isa = PBXGroup;
 			children = (
 				9100837424E06BA7003E57AE /* build.sh */,
 			);
-			path = Tools;
+			path = tools;
 			sourceTree = "<group>";
 		};
 		910C29C524D910D300B9116B = {
 			isa = PBXGroup;
 			children = (
-				9100837324E06B8F003E57AE /* Tools */,
-				910C29D524D910FA00B9116B /* Source */,
-				9100833624DF1C82003E57AE /* EmptyPlugIns */,
-				91E93AC124E8962D00BF7289 /* Tests */,
+				B487F106284500520074F0B2 /* include */,
+				B487F108284500630074F0B2 /* src */,
+				9100837324E06B8F003E57AE /* tools */,
+				B487F109284501700074F0B2 /* demos */,
+				91E93AC124E8962D00BF7289 /* tests */,
 				910C29CF24D910D300B9116B /* Products */,
 				9100834024DF1EEB003E57AE /* Frameworks */,
 			);
@@ -176,47 +177,78 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		910C29D524D910FA00B9116B /* Source */ = {
-			isa = PBXGroup;
-			children = (
-				914EC76224D9181600725ABE /* AUBase.cpp */,
-				914EC76124D9181600725ABE /* AUBase.h */,
-				914EC77524D920CC00725ABE /* AUBuffer.cpp */,
-				914EC77624D920CC00725ABE /* AUBuffer.h */,
-				919B0CC42555C72000C59BDC /* AUBufferAllocator.cpp */,
-				914EC77A24D9225800725ABE /* AudioUnitSDK.h */,
-				9100834F24DF3245003E57AE /* AUEffectBase.cpp */,
-				9100834924DF3245003E57AE /* AUEffectBase.h */,
-				914EC75924D9181600725ABE /* AUInputElement.cpp */,
-				914EC76024D9181600725ABE /* AUInputElement.h */,
-				9100834E24DF3245003E57AE /* AUMIDIBase.cpp */,
-				9100834424DF3245003E57AE /* AUMIDIBase.h */,
-				9100834C24DF3245003E57AE /* AUMIDIEffectBase.cpp */,
-				9100834524DF3245003E57AE /* AUMIDIEffectBase.h */,
-				394A97032576BF1700897571 /* AUMIDIUtility.h */,
-				914EC75824D9181600725ABE /* AUOutputElement.cpp */,
-				914EC75B24D9181600725ABE /* AUOutputElement.h */,
-				914EC77324D91FFA00725ABE /* AUPlugInDispatch.cpp */,
-				914EC75F24D9181600725ABE /* AUPlugInDispatch.h */,
-				914EC75D24D9181600725ABE /* AUScopeElement.cpp */,
-				914EC75C24D9181600725ABE /* AUScopeElement.h */,
-				9100835224DF3DAC003E57AE /* AUSilentTimeout.h */,
-				9100832D24DF0C5B003E57AE /* AUUtility.h */,
-				910C29D724D9115100B9116B /* ComponentBase.cpp */,
-				910C29D624D9115100B9116B /* ComponentBase.h */,
-				9100834624DF3245003E57AE /* MusicDeviceBase.cpp */,
-				9100834B24DF3245003E57AE /* MusicDeviceBase.h */,
-			);
-			path = Source;
-			sourceTree = "<group>";
-		};
-		91E93AC124E8962D00BF7289 /* Tests */ = {
+		91E93AC124E8962D00BF7289 /* tests */ = {
 			isa = PBXGroup;
 			children = (
 				91E93AC224E8962D00BF7289 /* Tests.mm */,
 				91E93AC424E8962D00BF7289 /* Info.plist */,
 			);
-			path = Tests;
+			path = tests;
+			sourceTree = "<group>";
+		};
+		B487F106284500520074F0B2 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				B4888687282AC1D800521D1A /* AudioUnitSDK */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		B487F108284500630074F0B2 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				B48885E4282A6D6D00521D1A /* AudioUnitSDK */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		B487F109284501700074F0B2 /* demos */ = {
+			isa = PBXGroup;
+			children = (
+				9100833624DF1C82003E57AE /* EmptyPlugIns */,
+			);
+			path = demos;
+			sourceTree = "<group>";
+		};
+		B48885E4282A6D6D00521D1A /* AudioUnitSDK */ = {
+			isa = PBXGroup;
+			children = (
+				914EC76224D9181600725ABE /* AUBase.cpp */,
+				914EC77524D920CC00725ABE /* AUBuffer.cpp */,
+				919B0CC42555C72000C59BDC /* AUBufferAllocator.cpp */,
+				9100834F24DF3245003E57AE /* AUEffectBase.cpp */,
+				914EC75924D9181600725ABE /* AUInputElement.cpp */,
+				9100834E24DF3245003E57AE /* AUMIDIBase.cpp */,
+				9100834C24DF3245003E57AE /* AUMIDIEffectBase.cpp */,
+				914EC75824D9181600725ABE /* AUOutputElement.cpp */,
+				914EC77324D91FFA00725ABE /* AUPlugInDispatch.cpp */,
+				914EC75D24D9181600725ABE /* AUScopeElement.cpp */,
+				910C29D724D9115100B9116B /* ComponentBase.cpp */,
+				9100834624DF3245003E57AE /* MusicDeviceBase.cpp */,
+			);
+			path = AudioUnitSDK;
+			sourceTree = "<group>";
+		};
+		B4888687282AC1D800521D1A /* AudioUnitSDK */ = {
+			isa = PBXGroup;
+			children = (
+				914EC76124D9181600725ABE /* AUBase.h */,
+				914EC77624D920CC00725ABE /* AUBuffer.h */,
+				914EC77A24D9225800725ABE /* AudioUnitSDK.h */,
+				9100834924DF3245003E57AE /* AUEffectBase.h */,
+				914EC76024D9181600725ABE /* AUInputElement.h */,
+				9100834424DF3245003E57AE /* AUMIDIBase.h */,
+				9100834524DF3245003E57AE /* AUMIDIEffectBase.h */,
+				394A97032576BF1700897571 /* AUMIDIUtility.h */,
+				914EC75B24D9181600725ABE /* AUOutputElement.h */,
+				914EC75F24D9181600725ABE /* AUPlugInDispatch.h */,
+				914EC75C24D9181600725ABE /* AUScopeElement.h */,
+				9100835224DF3DAC003E57AE /* AUSilentTimeout.h */,
+				9100832D24DF0C5B003E57AE /* AUUtility.h */,
+				910C29D624D9115100B9116B /* ComponentBase.h */,
+				9100834B24DF3245003E57AE /* MusicDeviceBase.h */,
+			);
+			path = AudioUnitSDK;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -360,6 +392,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		9100837924E1A54B003E57AE /* Install clang-format hook */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -436,12 +469,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = S5585LNN66;
-				INFOPLIST_FILE = EmptyPlugIns/Info.plist;
+				DEVELOPMENT_TEAM = "";
+				HEADER_SEARCH_PATHS = include;
+				INFOPLIST_FILE = demos/EmptyPlugIns/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.EmptyPlugIns;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
 				WRAPPER_EXTENSION = bundle;
 			};
 			name = Debug;
@@ -451,12 +486,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = S5585LNN66;
-				INFOPLIST_FILE = EmptyPlugIns/Info.plist;
+				DEVELOPMENT_TEAM = "";
+				HEADER_SEARCH_PATHS = include;
+				INFOPLIST_FILE = demos/EmptyPlugIns/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.EmptyPlugIns;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				USE_HEADERMAP = NO;
 				WRAPPER_EXTENSION = bundle;
 			};
 			name = Release;
@@ -514,6 +551,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LLVM_LTO = NO;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
@@ -521,9 +559,14 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = "macosx iphoneos appletvos watchos";
+				SUPPORTS_MACCATALYST = YES;
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
+					"-Wimport-preprocessor-directive-pedantic",
+					"-Wunreachable-code-break",
+					"-Wunreachable-code-return",
+					"-Wvla",
 				);
 			};
 			name = Debug;
@@ -575,6 +618,7 @@
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LLVM_LTO = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
@@ -582,9 +626,14 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
 				SUPPORTED_PLATFORMS = "macosx iphoneos appletvos watchos";
+				SUPPORTS_MACCATALYST = YES;
 				WARNING_CFLAGS = (
 					"-Wall",
 					"-Wextra",
+					"-Wimport-preprocessor-directive-pedantic",
+					"-Wunreachable-code-break",
+					"-Wunreachable-code-return",
+					"-Wvla",
 				);
 			};
 			name = Release;
@@ -595,9 +644,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				EXECUTABLE_PREFIX = lib;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				HEADER_SEARCH_PATHS = include;
 				OTHER_CFLAGS = "-fvisibility=hidden";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = /usr/local/include/AudioUnitSDK;
+				SUPPORTS_MACCATALYST = YES;
+				USE_HEADERMAP = NO;
 			};
 			name = Debug;
 		};
@@ -607,9 +659,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				EXECUTABLE_PREFIX = lib;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				HEADER_SEARCH_PATHS = include;
 				OTHER_CFLAGS = "-fvisibility=hidden";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = /usr/local/include/AudioUnitSDK;
+				SUPPORTS_MACCATALYST = YES;
+				USE_HEADERMAP = NO;
 			};
 			name = Release;
 		};
@@ -617,7 +672,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_FILE = Tests/Info.plist;
+				HEADER_SEARCH_PATHS = include;
+				INFOPLIST_FILE = tests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -625,6 +681,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				USE_HEADERMAP = NO;
 			};
 			name = Debug;
 		};
@@ -632,7 +689,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_FILE = Tests/Info.plist;
+				HEADER_SEARCH_PATHS = include;
+				INFOPLIST_FILE = tests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -640,6 +698,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				USE_HEADERMAP = NO;
 			};
 			name = Release;
 		};
