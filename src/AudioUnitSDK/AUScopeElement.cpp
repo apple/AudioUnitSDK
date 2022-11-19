@@ -52,7 +52,7 @@ AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) co
 	}
 	const auto i = mParameters.find(paramID);
 	ausdk::ThrowExceptionIf(i == mParameters.end(), kAudioUnitErr_InvalidParameter);
-	return (*i).second.load(std::memory_order_acquire);
+	return i->second.load(std::memory_order_acquire);
 }
 
 //_____________________________________________________________________________
@@ -83,7 +83,7 @@ void AUElement::SetParameter(
 			}
 		} else {
 			// paramID already exists in map so simply change its value
-			(*i).second.store(inValue, std::memory_order_release);
+			i->second.store(inValue, std::memory_order_release);
 		}
 	}
 }

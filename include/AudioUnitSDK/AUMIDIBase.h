@@ -69,8 +69,8 @@ public:
 	virtual OSStatus MIDIEvent(
 		UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame)
 	{
-		const UInt32 strippedStatus = inStatus & 0xf0U; // NOLINT
-		const UInt32 channel = inStatus & 0x0fU;        // NOLINT
+		const UInt8 strippedStatus = static_cast<const UInt8>(inStatus & 0xf0U); // NOLINT
+		const UInt8 channel = static_cast<const UInt8>(inStatus & 0x0fU);        // NOLINT
 
 		return HandleMIDIEvent(strippedStatus, channel, inData1, inData2, inOffsetSampleFrame);
 	}
