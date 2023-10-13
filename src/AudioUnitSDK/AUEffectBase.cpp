@@ -251,12 +251,12 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 
 	UInt32 channelSize = inSliceFramesToProcess * mBytesPerFrame;
 	// fix the size of the buffer we're operating on before we render this slice of time
-	for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
+	for (UInt32 i = 0, nBuf = inputBufferList.mNumberBuffers; i < nBuf; i++) {
 		inputBufferList.mBuffers[i].mDataByteSize =                    // NOLINT
 			inputBufferList.mBuffers[i].mNumberChannels * channelSize; // NOLINT
 	}
 
-	for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
+	for (UInt32 i = 0, nBuf = outputBufferList.mNumberBuffers; i < nBuf; i++) {
 		outputBufferList.mBuffers[i].mDataByteSize =                    // NOLINT
 			outputBufferList.mBuffers[i].mNumberChannels * channelSize; // NOLINT
 	}
@@ -266,13 +266,13 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 
 	// we just partially processed the buffers, so increment the data pointers to the next part of
 	// the buffer to process
-	for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
+	for (UInt32 i = 0, nBuf = inputBufferList.mNumberBuffers; i < nBuf; i++) {
 		inputBufferList.mBuffers[i].mData =                              // NOLINT
 			static_cast<std::byte*>(inputBufferList.mBuffers[i].mData) + // NOLINT
 			inputBufferList.mBuffers[i].mNumberChannels * channelSize;   // NOLINT
 	}
 
-	for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
+	for (UInt32 i = 0, nBuf = outputBufferList.mNumberBuffers; i < nBuf; i++) {
 		outputBufferList.mBuffers[i].mData =                              // NOLINT
 			static_cast<std::byte*>(outputBufferList.mBuffers[i].mData) + // NOLINT
 			outputBufferList.mBuffers[i].mNumberChannels * channelSize;   // NOLINT
@@ -291,9 +291,7 @@ OSStatus AUEffectBase::Render(
 		return kAudioUnitErr_NoConnection;
 	}
 
-	OSStatus result = noErr;
-
-	result = mMainInput->PullInput(ioActionFlags, inTimeStamp, 0 /* element */, nFrames);
+	OSStatus result = mMainInput->PullInput(ioActionFlags, inTimeStamp, 0 /* element */, nFrames);
 
 	if (result == noErr) {
 		if (ProcessesInPlace() && mMainOutput->WillAllocateBuffer()) {
@@ -330,7 +328,7 @@ OSStatus AUEffectBase::Render(
 
 				// fixup the buffer pointers to how they were before we started
 				const UInt32 channelSize = nFrames * mBytesPerFrame;
-				for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
+				for (UInt32 i = 0, nbufs = inputBufferList.mNumberBuffers; i < nbufs; i++) {
 					const UInt32 size =
 						inputBufferList.mBuffers[i].mNumberChannels * channelSize;         // NOLINT
 					inputBufferList.mBuffers[i].mData =                                    // NOLINT
@@ -338,7 +336,7 @@ OSStatus AUEffectBase::Render(
 					inputBufferList.mBuffers[i].mDataByteSize = size;                      // NOLINT
 				}
 
-				for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
+				for (UInt32 i = 0, nbufs = outputBufferList.mNumberBuffers; i < nbufs; i++) {
 					const UInt32 size =
 						outputBufferList.mBuffers[i].mNumberChannels * channelSize; // NOLINT
 					outputBufferList.mBuffers[i].mData =                            // NOLINT
@@ -366,7 +364,7 @@ OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFl
 		return noErr;
 	}
 
-	bool ioSilence = false;
+	bool ioSilence;
 
 	const bool silentInput = IsInputSilent(ioActionFlags, inFramesToProcess);
 	ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;

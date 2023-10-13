@@ -159,7 +159,7 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 	}
 }
 
-constexpr uint8_t MIDIStatusNibbleValue(uint8_t status) noexcept { return (status & 0xF0U) >> 4u; }
+constexpr uint8_t MIDIStatusNibbleValue(uint8_t status) noexcept { return status >> 4u; }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //	AUMIDIBase::HandleMIDIEvent

@@ -8,8 +8,8 @@ namespace ausdk {
 
 constexpr bool HasGoodBufferPointers(const AudioBufferList& abl, UInt32 nBytes) noexcept
 {
-	const AudioBuffer* buf = abl.mBuffers;                // NOLINT
-	for (UInt32 i = abl.mNumberBuffers; i-- > 0; ++buf) { // NOLINT
+	const AudioBuffer* buf = abl.mBuffers;                   // NOLINT
+	for (UInt32 i = abl.mNumberBuffers; i > 0; i--, ++buf) { // NOLINT
 		if (buf->mData == nullptr || buf->mDataByteSize < nBytes) {
 			return false;
 		}

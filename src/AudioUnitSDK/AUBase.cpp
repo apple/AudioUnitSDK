@@ -1586,7 +1586,7 @@ bool AUBase::IsStreamFormatWritable(AudioUnitScope scope, AudioUnitElement eleme
 	case kAudioUnitScope_Output:
 		return StreamFormatWritable(scope, element);
 
-		//#warning "aliasing of global scope format should be pushed to subclasses"
+		// #warning "aliasing of global scope format should be pushed to subclasses"
 	case kAudioUnitScope_Global:
 		return StreamFormatWritable(kAudioUnitScope_Output, 0);
 	default:
@@ -1600,7 +1600,7 @@ bool AUBase::IsStreamFormatWritable(AudioUnitScope scope, AudioUnitElement eleme
 AudioStreamBasicDescription AUBase::GetStreamFormat(
 	AudioUnitScope inScope, AudioUnitElement inElement)
 {
-	//#warning "aliasing of global scope format should be pushed to subclasses"
+	// #warning "aliasing of global scope format should be pushed to subclasses"
 	AUIOElement* element = nullptr;
 
 	switch (inScope) {
@@ -1638,7 +1638,7 @@ OSStatus AUBase::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inE
 		return noErr;
 	}
 
-	//#warning "aliasing of global scope format should be pushed to subclasses"
+	// #warning "aliasing of global scope format should be pushed to subclasses"
 	AUIOElement* element = nullptr;
 
 	switch (inScope) {
@@ -2049,7 +2049,7 @@ std::string AUBase::CreateLoggingString() const
 	const auto desc = GetComponentDescription();
 	std::array<char, 32> buf{};
 	[[maybe_unused]] const int printCount =
-		snprintf(buf.data(), buf.size(), "AU (%p): ", GetComponentInstance()); // NOLINT
+		snprintf(buf.data(), buf.size(), "AU (%p): ", (void*)GetComponentInstance()); // NOLINT
 #if DEBUG
 	assert(printCount < static_cast<int>(buf.size()));
 #endif
