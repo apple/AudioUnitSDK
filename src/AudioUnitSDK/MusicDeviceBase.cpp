@@ -1,8 +1,15 @@
 /*!
 	@file		AudioUnitSDK/MusicDeviceBase.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
+#include <AudioUnitSDK/AUConfig.h>
+
+#if AUSDK_HAVE_MUSIC_DEVICE
+
+#include <AudioUnitSDK/AUUtility.h>
 #include <AudioUnitSDK/MusicDeviceBase.h>
+
+#include <AudioToolbox/MusicDevice.h>
 
 namespace ausdk {
 
@@ -16,49 +23,40 @@ MusicDeviceBase::MusicDeviceBase(
 OSStatus MusicDeviceBase::GetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope inScope,
 	AudioUnitElement inElement, UInt32& outDataSize, bool& outWritable)
 {
-	OSStatus result = noErr;
-
 	switch (inID) { // NOLINT if/else
 	case kMusicDeviceProperty_InstrumentCount:
-		if (inScope != kAudioUnitScope_Global) {
-			return kAudioUnitErr_InvalidScope;
-		}
+		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		outDataSize = sizeof(UInt32);
 		outWritable = false;
-		result = noErr;
-		break;
-	default:
-		result = AUBase::GetPropertyInfo(inID, inScope, inElement, outDataSize, outWritable);
+		return noErr;
+	default: {
+		auto result = AUBase::GetPropertyInfo(inID, inScope, inElement, outDataSize, outWritable);
 
 		if (result == kAudioUnitErr_InvalidProperty) {
 			result = AUMIDIBase::DelegateGetPropertyInfo(
 				inID, inScope, inElement, outDataSize, outWritable);
 		}
-		break;
+		return result;
 	}
-	return result;
+	}
 }
 
 OSStatus MusicDeviceBase::GetProperty(
 	AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement, void* outData)
 {
-	OSStatus result = noErr;
-
 	switch (inID) { // NOLINT if/else
 	case kMusicDeviceProperty_InstrumentCount:
-		if (inScope != kAudioUnitScope_Global) {
-			return kAudioUnitErr_InvalidScope;
-		}
+		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		return GetInstrumentCount(*static_cast<UInt32*>(outData));
-	default:
-		result = AUBase::GetProperty(inID, inScope, inElement, outData);
+	default: {
+		auto result = AUBase::GetProperty(inID, inScope, inElement, outData);
 
 		if (result == kAudioUnitErr_InvalidProperty) {
 			result = AUMIDIBase::DelegateGetProperty(inID, inScope, inElement, outData);
 		}
+		return result;
 	}
-
-	return result;
+	}
 }
 
 
@@ -98,20 +96,6 @@ OSStatus MusicDeviceBase::HandleNoteOff(
 {
 	return StopNote(inChannel, inNoteNumber, inStartFrame);
 }
-
-OSStatus MusicDeviceBase::HandleStartNoteMessage(MusicDeviceInstrumentID inInstrument,
-	MusicDeviceGroupID inGroupID, NoteInstanceID* outNoteInstanceID, UInt32 inOffsetSampleFrame,
-	const MusicDeviceNoteParams* inParams)
-{
-	if (inParams == nullptr || outNoteInstanceID == nullptr) {
-		return kAudio_ParamError;
-	}
-
-	if (!IsInitialized()) {
-		return kAudioUnitErr_Uninitialized;
-	}
-
-	return StartNote(inInstrument, inGroupID, outNoteInstanceID, inOffsetSampleFrame, *inParams);
-}
-
 } // namespace ausdk
+
+#endif // AUSDK_HAVE_MUSIC_DEVICE

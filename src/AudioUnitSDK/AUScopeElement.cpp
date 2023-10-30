@@ -1,13 +1,21 @@
 /*!
 	@file		AudioUnitSDK/AUScopeElement.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUScopeElement.h>
+#include <AudioUnitSDK/AUUtility.h>
 
 #include <AudioToolbox/AudioUnitProperties.h>
 
+#include <CoreFoundation/CFByteOrder.h>
+
+#include <algorithm>
 #include <array>
+#include <bit>
+#include <cstring>
+#include <numeric>
+#include <utility>
 
 namespace ausdk {
 
@@ -52,7 +60,7 @@ AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) co
 	}
 	const auto i = mParameters.find(paramID);
 	ausdk::ThrowExceptionIf(i == mParameters.end(), kAudioUnitErr_InvalidParameter);
-	return (*i).second.load(std::memory_order_acquire);
+	return i->second.load(std::memory_order_acquire);
 }
 
 //_____________________________________________________________________________
@@ -83,7 +91,7 @@ void AUElement::SetParameter(
 			}
 		} else {
 			// paramID already exists in map so simply change its value
-			(*i).second.store(inValue, std::memory_order_release);
+			i->second.store(inValue, std::memory_order_release);
 		}
 	}
 }
@@ -108,14 +116,11 @@ void AUElement::SetScheduledEvent(AudioUnitParameterID paramID,
 void AUElement::GetParameterList(AudioUnitParameterID* outList)
 {
 	if (mUseIndexedParameters) {
-		const auto nparams = static_cast<UInt32>(mIndexedParameters.size());
-		for (UInt32 i = 0; i < nparams; i++) {
-			*outList++ = (AudioUnitParameterID)i; // NOLINT
-		}
+		const auto numParams = std::ssize(mIndexedParameters);
+		std::iota(outList, std::next(outList, numParams), 0);
 	} else {
-		for (const auto& param : mParameters) {
-			*outList++ = param.first; // NOLINT
-		}
+		std::transform(mParameters.cbegin(), mParameters.cend(), outList,
+			[](const auto& keyValue) { return keyValue.first; });
 	}
 }
 
@@ -127,17 +132,11 @@ void AUElement::SaveState(AudioUnitScope scope, CFMutableDataRef data)
 	const CFIndex countOffset = CFDataGetLength(data);
 	uint32_t paramsWritten = 0;
 
-	const auto appendBytes = [data](const void* bytes, CFIndex length) {
-		CFDataAppendBytes(data, static_cast<const UInt8*>(bytes), length);
+	const auto appendBytes = [data](const auto& value) {
+		CFDataAppendBytes(data, reinterpret_cast<const UInt8*>(&value), sizeof(value)); // NOLINT
 	};
 
 	const auto appendParameter = [&](AudioUnitParameterID paramID, AudioUnitParameterValue value) {
-		struct {
-			UInt32 paramID;
-			UInt32 value; // really a big-endian float
-		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
-
 		if (mAudioUnit.GetParameterInfo(scope, paramID, paramInfo) == noErr) {
 			if ((paramInfo.flags & kAudioUnitParameterFlag_CFNameRelease) != 0u) {
 				if (paramInfo.cfNameString != nullptr) {
@@ -154,19 +153,18 @@ void AUElement::SaveState(AudioUnitScope scope, CFMutableDataRef data)
 			}
 		}
 
-		entry.paramID = CFSwapInt32HostToBig(paramID);
-		entry.value = CFSwapInt32HostToBig(*reinterpret_cast<UInt32*>(&value)); // NOLINT
+		appendBytes(CFSwapInt32HostToBig(paramID));
+		appendBytes(CFSwapInt32HostToBig(std::bit_cast<UInt32>(value)));
 
-		appendBytes(&entry, sizeof(entry));
 		++paramsWritten;
 	};
 
 	constexpr UInt32 placeholderCount = 0;
-	appendBytes(&placeholderCount, sizeof(placeholderCount));
+	appendBytes(placeholderCount);
 
 	if (mUseIndexedParameters) {
-		const auto nparams = static_cast<UInt32>(mIndexedParameters.size());
-		for (UInt32 i = 0; i < nparams; i++) {
+		const auto numParams = static_cast<UInt32>(mIndexedParameters.size());
+		for (UInt32 i = 0; i < numParams; i++) {
 			appendParameter(i, mIndexedParameters[i]);
 		}
 	} else {
@@ -184,29 +182,15 @@ void AUElement::SaveState(AudioUnitScope scope, CFMutableDataRef data)
 //
 const UInt8* AUElement::RestoreState(const UInt8* state)
 {
-	union FloatInt32 {
-		UInt32 i;
-		AudioUnitParameterValue f;
-	};
 	const UInt8* p = state;
-	const UInt32 nparams = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
-	p += sizeof(UInt32);                                                              // NOLINT
+	const auto numParams = ExtractBigUInt32AndAdvance(p);
 
-	for (UInt32 i = 0; i < nparams; ++i) {
-		struct {
-			AudioUnitParameterID paramID;
-			AudioUnitParameterValue value;
-		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
+	for (UInt32 i = 0; i < numParams; ++i) {
+		const auto parameterID = ExtractBigUInt32AndAdvance(p);
+		const auto valueBytes = ExtractBigUInt32AndAdvance(p);
+		const auto value = std::bit_cast<AudioUnitParameterValue>(valueBytes);
 
-		entry.paramID = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
-		p += sizeof(UInt32);                                                       // NOLINT
-		FloatInt32 temp{};                                                         // NOLINT
-		temp.i = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p));        // NOLINT
-		entry.value = temp.f;                                                      // NOLINT
-		p += sizeof(AudioUnitParameterValue);                                      // NOLINT
-
-		SetParameter(entry.paramID, entry.value);
+		SetParameter(parameterID, value);
 	}
 	return p;
 }
@@ -285,9 +269,8 @@ UInt32 AUIOElement::GetAudioChannelLayout(AudioChannelLayout* outLayoutPtr, bool
 // Subclass should overide if channel map is writable
 OSStatus AUIOElement::SetAudioChannelLayout(const AudioChannelLayout& inLayout)
 {
-	if (NumberChannels() != AUChannelLayout::NumberChannels(inLayout)) {
-		return kAudioUnitErr_InvalidPropertyValue;
-	}
+	AUSDK_Require(NumberChannels() == AUChannelLayout::NumberChannels(inLayout),
+		kAudioUnitErr_InvalidPropertyValue);
 	mChannelLayout = inLayout;
 	return noErr;
 }
@@ -401,9 +384,9 @@ void AUScope::SaveState(CFMutableDataRef data) const
 	const AudioUnitElement nElems = GetNumberOfElements();
 	for (AudioUnitElement ielem = 0; ielem < nElems; ++ielem) {
 		AUElement* const element = GetElement(ielem);
-		const UInt32 nparams = element->GetNumberOfParameters();
-		if (nparams > 0) {
-			struct {
+		const UInt32 numParams = element->GetNumberOfParameters();
+		if (numParams > 0) {
+			const struct {
 				const UInt32 scope;
 				const UInt32 element;
 			} hdr{ .scope = CFSwapInt32HostToBig(GetScope()),
@@ -419,19 +402,12 @@ void AUScope::SaveState(CFMutableDataRef data) const
 const UInt8* AUScope::RestoreState(const UInt8* state) const
 {
 	const UInt8* p = state;
-	const UInt32 elementIdx = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
-	p += sizeof(UInt32);                                                                 // NOLINT
+	const auto elementIdx = ExtractBigUInt32AndAdvance(p);
 	AUElement* const element = GetElement(elementIdx);
 	if (element == nullptr) {
-		struct {
-			AudioUnitParameterID paramID;
-			AudioUnitParameterValue value;
-		} entry{};
-		static_assert(sizeof(entry) == (sizeof(entry.paramID) + sizeof(entry.value)));
-		const UInt32 nparams = CFSwapInt32BigToHost(*reinterpret_cast<const UInt32*>(p)); // NOLINT
-		p += sizeof(UInt32);                                                              // NOLINT
-
-		p += nparams * sizeof(entry); // NOLINT
+		const auto numParams = ExtractBigUInt32AndAdvance(p);
+		constexpr auto entrySize = sizeof(AudioUnitParameterID) + sizeof(AudioUnitParameterValue);
+		p += numParams * entrySize; // NOLINT
 	} else {
 		p = element->RestoreState(p);
 	}

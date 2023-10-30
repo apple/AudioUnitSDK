@@ -1,10 +1,13 @@
 /*!
 	@file		AudioUnitSDK/AUPlugInDispatch.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUPlugInDispatch_h
 #define AudioUnitSDK_AUPlugInDispatch_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/ComponentBase.h>
 
 namespace ausdk {
@@ -16,8 +19,7 @@ struct AUBaseLookup {
 
 /// Factory for a basic AUBase subclass.
 template <class Implementor>
-class AUBaseFactory : public APFactory<AUBaseLookup, Implementor> {
-};
+class AUBaseFactory : public APFactory<AUBaseLookup, Implementor> {};
 
 /// Method lookup for a AUBase subclass which implements I/O methods (Start, Stop).
 struct AUOutputLookup {
@@ -26,8 +28,7 @@ struct AUOutputLookup {
 
 /// Factory for an AUBase subclass which implements I/O methods (Start, Stop).
 template <class Implementor>
-class AUOutputBaseFactory : public APFactory<AUOutputLookup, Implementor> {
-};
+class AUOutputBaseFactory : public APFactory<AUOutputLookup, Implementor> {};
 
 /// Method lookup for an AUBase subclass which implements I/O methods (Start, Stop) and
 /// ComplexRender.
@@ -37,8 +38,7 @@ struct AUComplexOutputLookup {
 
 /// Factory for an AUBase subclass which implements I/O methods (Start, Stop) and ComplexRender.
 template <class Implementor>
-class AUOutputComplexBaseFactory : public APFactory<AUComplexOutputLookup, Implementor> {
-};
+class AUOutputComplexBaseFactory : public APFactory<AUComplexOutputLookup, Implementor> {};
 
 /// Method lookup for an AUBase subclass which implements Process.
 struct AUBaseProcessLookup {
@@ -47,8 +47,7 @@ struct AUBaseProcessLookup {
 
 /// Factory for an AUBase subclass which implements Process.
 template <class Implementor>
-class AUBaseProcessFactory : public APFactory<AUBaseProcessLookup, Implementor> {
-};
+class AUBaseProcessFactory : public APFactory<AUBaseProcessLookup, Implementor> {};
 
 /// Method lookup for an AUBase subclass which implements ProcessMultiple.
 struct AUBaseProcessMultipleLookup {
@@ -57,8 +56,7 @@ struct AUBaseProcessMultipleLookup {
 
 /// Factory for an AUBase subclass which implements ProcessMultiple.
 template <class Implementor>
-class AUBaseProcessMultipleFactory : public APFactory<AUBaseProcessMultipleLookup, Implementor> {
-};
+class AUBaseProcessMultipleFactory : public APFactory<AUBaseProcessMultipleLookup, Implementor> {};
 
 /// Method lookup for an AUBase subclass which implements Process and ProcessMultiple.
 struct AUBaseProcessAndMultipleLookup {
@@ -68,9 +66,9 @@ struct AUBaseProcessAndMultipleLookup {
 /// Factory for an AUBase subclass which implements Process and ProcessMultiple.
 template <class Implementor>
 class AUBaseProcessAndMultipleFactory
-	: public APFactory<AUBaseProcessAndMultipleLookup, Implementor> {
-};
+	: public APFactory<AUBaseProcessAndMultipleLookup, Implementor> {};
 
+#if AUSDK_HAVE_MIDI
 /// Method lookup for an AUBase subclass which implements MusicDevice methods (MIDIEvent and SysEx).
 struct AUMIDILookup {
 	static AudioComponentMethod Lookup(SInt16 selector);
@@ -78,8 +76,7 @@ struct AUMIDILookup {
 
 /// Factory for an AUBase subclass which implements MusicDevice methods (MIDIEvent and SysEx).
 template <class Implementor>
-class AUMIDIEffectFactory : public APFactory<AUMIDILookup, Implementor> {
-};
+class AUMIDIEffectFactory : public APFactory<AUMIDILookup, Implementor> {};
 
 /// Method lookup for an AUBase subclass which implements Process and MusicDevice methods (MIDIEvent
 /// and SysEx).
@@ -90,9 +87,10 @@ struct AUMIDIProcessLookup {
 /// Factory for an AUBase subclass which implements Process and MusicDevice methods (MIDIEvent
 /// and SysEx).
 template <class Implementor>
-class AUMIDIProcessFactory : public APFactory<AUMIDIProcessLookup, Implementor> {
-};
+class AUMIDIProcessFactory : public APFactory<AUMIDIProcessLookup, Implementor> {};
+#endif // AUSDK_HAVE_MIDI
 
+#if AUSDK_HAVE_MUSIC_DEVICE
 /// Method lookup for an AUBase subclass which implements the full set of MusicDevice methods
 /// (MIDIEvent, SysEx, StartNote, StopNote).
 struct AUMusicLookup {
@@ -102,9 +100,8 @@ struct AUMusicLookup {
 /// Factory for an AUBase subclass which implements the full set of MusicDevice methods
 /// (MIDIEvent, SysEx, StartNote, StopNote).
 template <class Implementor>
-class AUMusicDeviceFactory : public APFactory<AUMusicLookup, Implementor> {
-};
-
+class AUMusicDeviceFactory : public APFactory<AUMusicLookup, Implementor> {};
+#endif // AUSDK_HAVE_MUSIC_DEVICE
 } // namespace ausdk
 
 #endif // AudioUnitSDK_AUPlugInDispatch_h

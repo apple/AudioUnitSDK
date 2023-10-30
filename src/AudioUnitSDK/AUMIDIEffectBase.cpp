@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIEffectBase.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUMIDIEffectBase.h>
 

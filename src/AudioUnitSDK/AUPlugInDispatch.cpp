@@ -1,17 +1,29 @@
 /*!
 	@file		AudioUnitSDK/AUPlugInDispatch.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUPlugInDispatch.h>
 #include <AudioUnitSDK/AUUtility.h>
 #include <AudioUnitSDK/ComponentBase.h>
 
+#if AUSDK_HAVE_MUSIC_DEVICE
+#include <AudioToolbox/MusicDevice.h>
+#endif
+
+#if AUSDK_HAVE_IO_UNITS
+#include <AudioToolbox/AudioOutputUnit.h>
+#endif
+
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 
-#define CATCH_EXCEPTIONS_IN_RENDER_METHODS TARGET_OS_OSX // NOLINT
-#define HAVE_MUSICDEVICE_PREPARE_RELEASE TARGET_OS_OSX   // NOLINT
+#define CATCH_EXCEPTIONS_IN_RENDER_METHODS TARGET_OS_OSX                                   // NOLINT
+#define AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE (AUSDK_HAVE_MUSIC_DEVICE && TARGET_OS_OSX) // NOLINT
 
 namespace ausdk {
 
@@ -139,11 +151,8 @@ static OSStatus AUMethodGetProperty(void* self, AudioUnitPropertyID inID, AudioU
 		}
 
 		UInt32 actualPropertySize = 0;
-		result = AUInstance(self)->DispatchGetPropertyInfo(
-			inID, inScope, inElement, actualPropertySize, writable);
-		if (result != noErr) {
-			return result;
-		}
+		AUSDK_Require_noerr(AUInstance(self)->DispatchGetPropertyInfo(
+			inID, inScope, inElement, actualPropertySize, writable));
 
 		std::vector<std::byte> tempBuffer;
 		void* destBuffer = nullptr;
@@ -274,9 +283,7 @@ static OSStatus AUMethodGetParameter(void* self, AudioUnitParameterID param, Aud
 static OSStatus AUMethodSetParameter(void* self, AudioUnitParameterID param, AudioUnitScope scope,
 	AudioUnitElement elem, AudioUnitParameterValue value, UInt32 bufferOffset)
 {
-	if (!IsValidParameterValue(value)) {
-		return kAudioUnitErr_InvalidParameterValue;
-	}
+	AUSDK_Require(IsValidParameterValue(value), kAudioUnitErr_InvalidParameterValue);
 
 	OSStatus result = noErr;
 	try {
@@ -290,9 +297,7 @@ static OSStatus AUMethodSetParameter(void* self, AudioUnitParameterID param, Aud
 static OSStatus AUMethodScheduleParameters(
 	void* self, const AudioUnitParameterEvent* events, UInt32 numEvents)
 {
-	if (!AreValidParameterEvents(events, numEvents)) {
-		return kAudioUnitErr_InvalidParameterValue;
-	}
+	AUSDK_Require(AreValidParameterEvents(events, numEvents), kAudioUnitErr_InvalidParameterValue);
 
 	OSStatus result = noErr;
 	try {
@@ -372,7 +377,7 @@ static OSStatus AUMethodReset(void* self, AudioUnitScope scope, AudioUnitElement
 	OSStatus result = noErr;
 	try {
 		const AUInstanceGuard guard(self);
-		result = AUInstance(self)->Reset(scope, elem);
+		result = AUInstance(self)->DoReset(scope, elem);
 	}
 	AUSDK_Catch(result)
 	return result;
@@ -457,6 +462,7 @@ static OSStatus AUMethodProcessMultiple(void* self, AudioUnitRenderActionFlags* 
 }
 // ------------------------------------------------------------------------------------------------
 
+#if AUSDK_HAVE_MUSIC_DEVICE
 static OSStatus AUMethodStart(void* self)
 {
 	OSStatus result = noErr;
@@ -478,9 +484,11 @@ static OSStatus AUMethodStop(void* self)
 	AUSDK_Catch(result)
 	return result;
 }
+#endif // AUSDK_HAVE_MUSIC_DEVICE
 
 // ------------------------------------------------------------------------------------------------
 
+#if AUSDK_HAVE_MIDI
 // I don't know what I'm doing here; conflicts with the multiple inheritence in MusicDeviceBase.
 static OSStatus AUMethodMIDIEvent(
 	void* self, UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame)
@@ -504,8 +512,9 @@ static OSStatus AUMethodSysEx(void* self, const UInt8* inData, UInt32 inLength)
 	AUSDK_Catch(result)
 	return result;
 }
+#endif // AUSDK_HAVE_MIDI
 
-#if AUSDK_MIDI2_AVAILABLE
+#if AUSDK_HAVE_MIDI2
 static OSStatus AUMethodMIDIEventList(
 	void* self, UInt32 inOffsetSampleFrame, const struct MIDIEventList* eventList)
 {
@@ -527,6 +536,7 @@ static OSStatus AUMethodMIDIEventList(
 }
 #endif
 
+#if AUSDK_HAVE_MUSIC_DEVICE
 static OSStatus AUMethodStartNote(void* self, MusicDeviceInstrumentID inInstrument,
 	MusicDeviceGroupID inGroupID, NoteInstanceID* outNoteInstanceID, UInt32 inOffsetSampleFrame,
 	const MusicDeviceNoteParams* inParams)
@@ -556,8 +566,9 @@ static OSStatus AUMethodStopNote(void* self, MusicDeviceGroupID inGroupID,
 	AUSDK_Catch(result)
 	return result;
 }
+#endif // AUSDK_HAVE_MUSIC_DEVICE
 
-#if HAVE_MUSICDEVICE_PREPARE_RELEASE
+#if AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE
 static OSStatus AUMethodPrepareInstrument(void* self, MusicDeviceInstrumentID inInstrument)
 {
 	OSStatus result = noErr;
@@ -579,7 +590,7 @@ static OSStatus AUMethodReleaseInstrument(void* self, MusicDeviceInstrumentID in
 	AUSDK_Catch(result)
 	return result;
 }
-#endif // HAVE_MUSICDEVICE_PREPARE_RELEASE
+#endif // AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE
 
 
 //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -633,10 +644,12 @@ AudioComponentMethod AUOutputLookup::Lookup(SInt16 selector)
 	}
 
 	switch (selector) {
+#if AUSDK_HAVE_IO_UNITS
 	case kAudioOutputUnitStartSelect:
 		return (AudioComponentMethod)AUMethodStart; // NOLINT cast
 	case kAudioOutputUnitStopSelect:
 		return (AudioComponentMethod)AUMethodStop; // NOLINT cast
+#endif                                             // AUSDK_HAVE_IO_UNITS
 	default:
 		break;
 	}
@@ -709,6 +722,7 @@ AudioComponentMethod AUBaseProcessAndMultipleLookup::Lookup(SInt16 selector)
 	return nullptr;
 }
 
+#if AUSDK_HAVE_MIDI
 inline AudioComponentMethod MIDI_Lookup(SInt16 selector)
 {
 	switch (selector) {
@@ -716,10 +730,10 @@ inline AudioComponentMethod MIDI_Lookup(SInt16 selector)
 		return (AudioComponentMethod)AUMethodMIDIEvent; // NOLINT cast
 	case kMusicDeviceSysExSelect:
 		return (AudioComponentMethod)AUMethodSysEx; // NOLINT cast
-#if AUSDK_MIDI2_AVAILABLE
+#if AUSDK_HAVE_MIDI2
 	case kMusicDeviceMIDIEventListSelect:
 		return (AudioComponentMethod)AUMethodMIDIEventList; // NOLINT cast
-#endif
+#endif                                                      // AUSDK_HAVE_MIDI2
 	default:
 		break;
 	}
@@ -745,7 +759,9 @@ AudioComponentMethod AUMIDIProcessLookup::Lookup(SInt16 selector)
 
 	return MIDI_Lookup(selector);
 }
+#endif // AUSDK_HAVE_MIDI
 
+#if AUSDK_HAVE_MUSIC_DEVICE
 AudioComponentMethod AUMusicLookup::Lookup(SInt16 selector)
 {
 	const AudioComponentMethod method = AUBaseLookup::Lookup(selector);
@@ -758,16 +774,21 @@ AudioComponentMethod AUMusicLookup::Lookup(SInt16 selector)
 		return (AudioComponentMethod)AUMethodStartNote; // NOLINT cast
 	case kMusicDeviceStopNoteSelect:
 		return (AudioComponentMethod)AUMethodStopNote; // NOLINT cast
-#if HAVE_MUSICDEVICE_PREPARE_RELEASE
+#if AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE
 	case kMusicDevicePrepareInstrumentSelect:
 		return (AudioComponentMethod)AUMethodPrepareInstrument; // NOLINT cast
 	case kMusicDeviceReleaseInstrumentSelect:
 		return (AudioComponentMethod)AUMethodReleaseInstrument; // NOLINT cast
-#endif
+#endif // AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE
 	default:
 		break;
 	}
+#if AUSDK_HAVE_MIDI
 	return MIDI_Lookup(selector);
+#else
+	return nullptr;
+#endif // AUSDK_HAVE_MIDI
 }
+#endif // AUSDK_HAVE_MUSIC_DEVICE
 
 } // namespace ausdk

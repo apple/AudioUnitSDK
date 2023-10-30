@@ -1,22 +1,35 @@
 /*!
 	@file		AudioUnitSDK/AUBase.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 
 #ifndef AudioUnitSDK_AUBase_h
 #define AudioUnitSDK_AUBase_h
 
 // module
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBuffer.h>
 #include <AudioUnitSDK/AUInputElement.h>
-#include <AudioUnitSDK/AUMIDIUtility.h>
 #include <AudioUnitSDK/AUOutputElement.h>
 #include <AudioUnitSDK/AUPlugInDispatch.h>
 #include <AudioUnitSDK/AUScopeElement.h>
+#include <AudioUnitSDK/AUThreadSafeList.h>
 #include <AudioUnitSDK/AUUtility.h>
+#include <AudioUnitSDK/ComponentBase.h>
 
 // OS
-#include <TargetConditionals.h>
+#include <AudioToolbox/AudioComponent.h>
+#include <AudioToolbox/AudioUnitProperties.h>
+
+#if AUSDK_HAVE_MUSIC_DEVICE
+#include <AudioToolbox/MusicDevice.h>
+#endif
+
+#if AUSDK_HAVE_MIDI2
+#include <CoreMIDI/MIDIServices.h>
+#endif
 
 // std
 #include <algorithm>
@@ -84,6 +97,9 @@ public:
 	// Overrides to this method can assume that they will only be called exactly once
 	// when transitioning from an initialized state to an uninitialized state.
 	virtual void Cleanup();
+
+	/// Implements the entry point and ensures that critical audio Reset work always occurs
+	OSStatus DoReset(AudioUnitScope inScope, AudioUnitElement inElement);
 
 	virtual OSStatus Reset(AudioUnitScope inScope, AudioUnitElement inElement);
 
@@ -227,7 +243,9 @@ public:
 	// If not a valid preset, return an error, and the pre-existing preset is restored.
 	virtual OSStatus NewFactoryPresetSet(const AUPreset& inNewFactoryPreset);
 	virtual OSStatus NewCustomPresetSet(const AUPreset& inNewCustomPreset);
+#if AUSDK_HAVE_UI
 	virtual CFURLRef CopyIconLocation();
+#endif
 
 	// default is no latency, and unimplemented tail time
 	virtual Float64 GetLatency() { return 0.0; }
@@ -434,7 +452,7 @@ public:
 		return kAudio_UnimplementedError;
 	}
 
-#if AUSDK_MIDI2_AVAILABLE
+#if AUSDK_HAVE_MIDI2
 	virtual OSStatus MIDIEventList(
 		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/)
 	{
@@ -442,6 +460,7 @@ public:
 	}
 #endif
 
+#if AUSDK_HAVE_MUSIC_DEVICE
 	virtual OSStatus StartNote(MusicDeviceInstrumentID /*inInstrument*/,
 		MusicDeviceGroupID /*inGroupID*/, NoteInstanceID* /*outNoteInstanceID*/,
 		UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& /*inParams*/)
@@ -466,6 +485,7 @@ public:
 	{
 		return kAudio_UnimplementedError;
 	}
+#endif // AUSDK_HAVE_MUSIC_DEVICE
 
 	// ________________________________________________________________________
 	// ________________________________________________________________________
@@ -545,16 +565,14 @@ private:
 			// will render into caller's buffer
 			theOutput.SetBufferList(ioData);
 		}
-		const OSStatus result = RenderBus(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames);
-		if (result == noErr) {
-			if (ioData.mBuffers[0].mData == nullptr) {
-				theOutput.CopyBufferListTo(ioData);
-			} else {
-				theOutput.CopyBufferContentsTo(ioData);
-				theOutput.InvalidateBufferList();
-			}
+		AUSDK_Require_noerr(RenderBus(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames));
+		if (ioData.mBuffers[0].mData == nullptr) {
+			theOutput.CopyBufferListTo(ioData);
+		} else {
+			theOutput.CopyBufferContentsTo(ioData);
+			theOutput.InvalidateBufferList();
 		}
-		return result;
+		return noErr;
 	}
 
 	bool HasIcon();
@@ -626,56 +644,21 @@ protected:
 	//	Private data members to discourage hacking in subclasses
 private:
 	struct RenderCallback {
-		RenderCallback() = default;
+		RenderCallback() : RenderCallback(nullptr, nullptr) {}
 
 		RenderCallback(AURenderCallback proc, void* ref)
 			: mRenderNotify(proc), mRenderNotifyRefCon(ref)
 		{
 		}
 
-		AURenderCallback mRenderNotify = nullptr;
-		void* mRenderNotifyRefCon = nullptr;
+		AURenderCallback mRenderNotify{ nullptr };
+		void* mRenderNotifyRefCon{ nullptr };
 
 		bool operator==(const RenderCallback& other) const
 		{
 			return this->mRenderNotify == other.mRenderNotify &&
 				   this->mRenderNotifyRefCon == other.mRenderNotifyRefCon;
 		}
-	};
-
-	class RenderCallbackList {
-	public:
-		void add(const RenderCallback& rc)
-		{
-			const std::lock_guard guard{ mLock };
-			const auto iter = std::find(mImpl.begin(), mImpl.end(), rc);
-			if (iter != mImpl.end()) {
-				return;
-			}
-			mImpl.emplace_back(rc);
-		}
-
-		void remove(const RenderCallback& rc)
-		{
-			const std::lock_guard guard{ mLock };
-			const auto iter = std::find(mImpl.begin(), mImpl.end(), rc);
-			if (iter != mImpl.end()) {
-				mImpl.erase(iter);
-			}
-		}
-
-		template <typename F>
-		void foreach (F&& func)
-		{
-			const std::lock_guard guard{ mLock };
-			for (const auto& cb : mImpl) {
-				func(cb);
-			}
-		}
-
-	private:
-		AUMutex mLock;
-		std::vector<RenderCallback> mImpl;
 	};
 
 protected:
@@ -697,7 +680,7 @@ private:
 	const UInt32 mInitNumOutputEls;
 	const UInt32 mInitNumGroupEls;
 	std::array<AUScope, kNumScopes> mScopes;
-	RenderCallbackList mRenderCallbacks;
+	AUThreadSafeList<RenderCallback> mRenderCallbacks;
 	bool mRenderCallbacksTouched{ false };
 	std::thread::id mRenderThreadID{};
 	bool mWantsRenderThreadID{ false };
@@ -708,6 +691,7 @@ private:
 	const double mHostTimeFrequency{
 		HostTime::Frequency()
 	}; // cache because there is calculation cost
+	uint64_t mLastTimeMessagePrinted{ 0 };
 #endif
 	AUPreset mCurrentPreset{ -1, nullptr };
 	bool mUsesFixedBlockSize{ false };

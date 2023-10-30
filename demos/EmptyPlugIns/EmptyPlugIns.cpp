@@ -3,6 +3,7 @@
 //  EmptyPlugIns
 //
 
+#include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUEffectBase.h>
 #include <AudioUnitSDK/MusicDeviceBase.h>
 

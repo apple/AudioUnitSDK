@@ -1,11 +1,15 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUMIDIBase_h
 #define AudioUnitSDK_AUMIDIBase_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBase.h>
+#include <AudioUnitSDK/AUUtility.h>
 
 
 #ifndef AUSDK_HAVE_XML_NAMES
@@ -69,13 +73,13 @@ public:
 	virtual OSStatus MIDIEvent(
 		UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame)
 	{
-		const UInt32 strippedStatus = inStatus & 0xf0U; // NOLINT
-		const UInt32 channel = inStatus & 0x0fU;        // NOLINT
+		const auto strippedStatus = static_cast<UInt8>(inStatus & 0xf0U); // NOLINT
+		const auto channel = static_cast<UInt8>(inStatus & 0x0fU);        // NOLINT
 
 		return HandleMIDIEvent(strippedStatus, channel, inData1, inData2, inOffsetSampleFrame);
 	}
 
-#if AUSDK_MIDI2_AVAILABLE
+#if AUSDK_HAVE_MIDI2
 	virtual OSStatus MIDIEventList(
 		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/)
 	{

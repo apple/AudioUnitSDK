@@ -1,22 +1,26 @@
 /*!
 	@file		AudioUnitSDK/AUScopeElement.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUScopeElement_h
 #define AudioUnitSDK_AUScopeElement_h
 
 // module
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBuffer.h>
 #include <AudioUnitSDK/AUUtility.h>
 #include <AudioUnitSDK/ComponentBase.h>
 
 // OS
-#include <AudioToolbox/AudioUnit.h>
+#include <AudioToolbox/AUComponent.h>
 
 // std
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace ausdk {
@@ -62,6 +66,7 @@ public:
 
 private:
 	std::atomic<T> mValue{};
+	static_assert(decltype(mValue)::is_always_lock_free);
 };
 
 /// A bare-bones reinvention of boost::flat_map, just enough to hold parameters in sorted vectors.
@@ -78,18 +83,18 @@ public:
 	using iterator = typename Impl::iterator;
 	using const_iterator = typename Impl::const_iterator;
 
-	[[nodiscard]] bool empty() const { return mImpl.empty(); }
-	[[nodiscard]] size_t size() const { return mImpl.size(); }
-	[[nodiscard]] const_iterator begin() const { return mImpl.begin(); }
-	[[nodiscard]] const_iterator end() const { return mImpl.end(); }
-	iterator begin() { return mImpl.begin(); }
-	iterator end() { return mImpl.end(); }
-	const_iterator cbegin() { return mImpl.cbegin(); }
-	const_iterator cend() { return mImpl.cend(); }
+	[[nodiscard]] bool empty() const noexcept { return mImpl.empty(); }
+	[[nodiscard]] size_t size() const noexcept { return mImpl.size(); }
+	[[nodiscard]] const_iterator begin() const noexcept { return mImpl.begin(); }
+	[[nodiscard]] const_iterator end() const noexcept { return mImpl.end(); }
+	iterator begin() noexcept { return mImpl.begin(); }
+	iterator end() noexcept { return mImpl.end(); }
+	const_iterator cbegin() noexcept { return mImpl.cbegin(); }
+	const_iterator cend() noexcept { return mImpl.cend(); }
 
 	[[nodiscard]] const_iterator lower_bound(Key k) const
 	{
-		return std::lower_bound(mImpl.begin(), mImpl.end(), k, keyless);
+		return std::lower_bound(mImpl.cbegin(), mImpl.cend(), k, keyless);
 	}
 
 	iterator lower_bound(Key k) { return std::lower_bound(mImpl.begin(), mImpl.end(), k, keyless); }
@@ -154,9 +159,6 @@ class AUIOElement;
 
 /// An organizational unit for parameters, with a name.
 class AUElement {
-	using ParameterValue = AtomicValue<float>;
-	using ParameterMap = flat_map<AudioUnitParameterID, ParameterValue>;
-
 public:
 	explicit AUElement(AUBase& audioUnit) : mAudioUnit(audioUnit), mUseIndexedParameters(false) {}
 
@@ -197,19 +199,20 @@ public:
 	void SaveState(AudioUnitScope scope, CFMutableDataRef data);
 	const UInt8* RestoreState(const UInt8* state);
 
-	[[nodiscard]] Owned<CFStringRef> GetName() const { return mElementName; }
-	void SetName(CFStringRef inName) { mElementName = inName; }
+	[[nodiscard]] Owned<CFStringRef> GetName() const noexcept { return mElementName; }
+	void SetName(CFStringRef inName) noexcept { mElementName = inName; }
 
-	[[nodiscard]] bool HasName() const { return *mElementName != nil; }
+	[[nodiscard]] bool HasName() const noexcept { return *mElementName != nullptr; }
 
 	virtual void UseIndexedParameters(UInt32 inNumberOfParameters);
 
 	virtual AUIOElement* AsIOElement() { return nullptr; }
 
 private:
-	// --
+	using ParameterValue = AtomicValue<float>;
+
 	AUBase& mAudioUnit;
-	ParameterMap mParameters;
+	flat_map<AudioUnitParameterID, ParameterValue> mParameters;
 	bool mUseIndexedParameters;
 	std::vector<ParameterValue> mIndexedParameters;
 	Owned<CFStringRef> mElementName;
@@ -404,9 +407,9 @@ public:
 	[[nodiscard]] AUIOElement* GetIOElement(UInt32 elementIndex) const
 	{
 		AUElement* const element = GetElement(elementIndex);
-		AUIOElement* const ioel = element != nullptr ? element->AsIOElement() : nullptr;
-		ausdk::ThrowExceptionIf(ioel == nullptr, kAudioUnitErr_InvalidElement);
-		return ioel;
+		AUIOElement* const ioElement = element != nullptr ? element->AsIOElement() : nullptr;
+		ausdk::ThrowExceptionIf(ioElement == nullptr, kAudioUnitErr_InvalidElement);
+		return ioElement;
 	}
 
 	[[nodiscard]] bool HasElementWithName() const;

@@ -1,11 +1,16 @@
 /*!
 	@file		AudioUnitSDK/AUSilentTimeout.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUSilentTimeout_h
 #define AudioUnitSDK_AUSilentTimeout_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
+
 #include <CoreFoundation/CFBase.h> // for UInt32
+
 #include <algorithm>
 
 namespace ausdk {

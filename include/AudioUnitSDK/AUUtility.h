@@ -1,59 +1,46 @@
 /*!
 	@file		AudioUnitSDK/AUUtility.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUUtility_h
 #define AudioUnitSDK_AUUtility_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
+
 // OS
-#if defined __has_include && __has_include(<CoreAudioTypes/CoreAudioTypes.h>)
-#include <CoreAudioTypes/CoreAudioTypes.h>
-#else
-#include <CoreAudio/CoreAudioTypes.h>
-#endif
-#include <libkern/OSByteOrder.h>
+#include <CoreFoundation/CFByteOrder.h>
+
+#if AUSDK_HAVE_MACH_TIME
 #include <mach/mach_time.h>
-#include <os/log.h>
-#include <syslog.h>
+#endif
 
 // std
 #include <bitset>
+#include <concepts>
 #include <cstddef>
-#include <exception>
+#include <cstring>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <vector>
-
-// -------------------------------------------------------------------------------------------------
-#pragma mark -
-#pragma mark General
-
-#ifdef AUSDK_NO_DEPRECATIONS
-#define AUSDK_DEPRECATED(msg)
-#else
-#define AUSDK_DEPRECATED(msg) [[deprecated(msg)]] // NOLINT macro
-#endif
-
-#ifndef AUSDK_LOG_OBJECT
-#define AUSDK_LOG_OBJECT OS_LOG_DEFAULT // NOLINT macro
-#endif
-
-// -------------------------------------------------------------------------------------------------
-#pragma mark -
-#pragma mark Version
-
-#define AUSDK_VERSION_MAJOR 1
-#define AUSDK_VERSION_MINOR 1
-#define AUSDK_VERSION_PATCH 0
 
 // -------------------------------------------------------------------------------------------------
 #pragma mark -
 #pragma mark Error-handling macros
 
+#ifndef AUSDK_LOG_OBJECT
+#define AUSDK_LOG_OBJECT OS_LOG_DEFAULT // NOLINT macro
+#endif                                  // AUSDK_LOG_OBJECT
+
 #ifdef AUSDK_NO_LOGGING
 #define AUSDK_LogError(...) /* NOLINT macro */
 #else
+#include <os/log.h>
+#include <syslog.h>
 #define AUSDK_LogError(...) /* NOLINT macro */                                                     \
 	if (__builtin_available(macOS 10.11, *)) {                                                     \
 		os_log_error(AUSDK_LOG_OBJECT, __VA_ARGS__);                                               \
@@ -140,8 +127,8 @@ public:
 	AUMutex& operator=(AUMutex&&) = delete;
 
 	virtual void lock() { mImpl.lock(); }
-	virtual void unlock() { mImpl.unlock(); }
-	virtual bool try_lock() { return mImpl.try_lock(); }
+	virtual void unlock() noexcept { mImpl.unlock(); }
+	virtual bool try_lock() noexcept { return mImpl.try_lock(); }
 
 private:
 	std::recursive_mutex mImpl;
@@ -160,7 +147,7 @@ public:
 		}
 	}
 
-	~AUEntryGuard()
+	~AUEntryGuard() noexcept
 	{
 		if (mMutex != nullptr) {
 			mMutex->unlock();
@@ -376,7 +363,7 @@ private:
 namespace ABL {
 
 // if the return result is odd, there was a null buffer.
-inline uint32_t IsBogusAudioBufferList(const AudioBufferList& abl)
+constexpr uint32_t IsBogusAudioBufferList(const AudioBufferList& abl)
 {
 	const AudioBuffer *buf = abl.mBuffers, *const bufEnd = buf + abl.mNumberBuffers;
 	uint32_t sum =
@@ -404,6 +391,7 @@ inline uint32_t IsBogusAudioBufferList(const AudioBufferList& abl)
 #pragma mark -
 #pragma mark HostTime
 
+#if AUSDK_HAVE_MACH_TIME
 /// Utility functions relating to Mach absolute time.
 namespace HostTime {
 
@@ -413,8 +401,7 @@ inline uint64_t Current() { return mach_absolute_time(); }
 /// Returns the frequency of the host timebase, in ticks per second.
 inline double Frequency()
 {
-	struct mach_timebase_info timeBaseInfo {
-	}; // NOLINT
+	struct mach_timebase_info timeBaseInfo {}; // NOLINT
 	mach_timebase_info(&timeBaseInfo);
 	//	the frequency of that clock is: (sToNanosDenominator / sToNanosNumerator) * 10^9
 	return static_cast<double>(timeBaseInfo.denom) / static_cast<double>(timeBaseInfo.numer) *
@@ -422,8 +409,10 @@ inline double Frequency()
 }
 
 } // namespace HostTime
+#endif // AUSDK_HAVE_MACH_TIME
 
 // -------------------------------------------------------------------------------------------------
+#pragma mark -
 
 /// Basic RAII wrapper for CoreFoundation types
 template <typename T>
@@ -501,22 +490,31 @@ private:
 };
 
 // -------------------------------------------------------------------------------------------------
+#pragma mark -
 
-constexpr bool safe_isprint(char in_char) noexcept { return (in_char >= ' ') && (in_char <= '~'); }
-
-inline std::string make_string_from_4cc(uint32_t in_4cc) noexcept
+inline UInt32 ExtractBigUInt32AndAdvance(const UInt8*& ioData)
 {
-#if !TARGET_RT_BIG_ENDIAN
-	in_4cc = OSSwapInt32(in_4cc); // NOLINT
-#endif
+	UInt32 value{};
+	memcpy(&value, ioData, sizeof(value));
+	ioData += sizeof(value); // NOLINT
+	return CFSwapInt32BigToHost(value);
+}
 
-	char* const string = reinterpret_cast<char*>(&in_4cc); // NOLINT
-	for (size_t i = 0; i < sizeof(in_4cc); ++i) {
-		if (!safe_isprint(string[i])) { // NOLINT
-			string[i] = '.';            // NOLINT
+inline std::string MakeStringFrom4CC(uint32_t in4CC) noexcept
+{
+	in4CC = CFSwapInt32HostToBig(in4CC);
+
+	constexpr auto safeIsPrint = [](char character) {
+		return (character >= ' ') && (character <= '~');
+	};
+
+	char* const string = reinterpret_cast<char*>(&in4CC); // NOLINT
+	for (size_t i = 0; i < sizeof(in4CC); ++i) {
+		if (!safeIsPrint(string[i])) { // NOLINT
+			string[i] = '.';           // NOLINT
 		}
 	}
-	return std::string{ string, sizeof(in_4cc) };
+	return std::string{ string, sizeof(in4CC) };
 }
 
 } // namespace ausdk

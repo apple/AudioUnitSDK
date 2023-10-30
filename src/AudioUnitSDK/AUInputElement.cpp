@@ -1,8 +1,9 @@
 /*!
 	@file		AudioUnitSDK/AUInputElement.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
-#include <AudioUnitSDK/AUBase.h>
+#include <AudioUnitSDK/AUInputElement.h>
+#include <AudioUnitSDK/AUUtility.h>
 
 namespace ausdk {
 
@@ -69,9 +70,7 @@ OSStatus AUInputElement::SetStreamFormat(const AudioStreamBasicDescription& fmt)
 OSStatus AUInputElement::PullInput(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames)
 {
-	if (!IsActive()) {
-		return kAudioUnitErr_NoConnection;
-	}
+	AUSDK_Require(IsActive(), kAudioUnitErr_NoConnection);
 
 	auto& iob = IOBuffer();
 

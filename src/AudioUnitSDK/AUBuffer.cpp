@@ -1,9 +1,13 @@
 /*!
 	@file		AudioUnitSDK/AUBuffer.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUBuffer.h>
 #include <AudioUnitSDK/AUUtility.h>
+
+#include <AudioToolbox/AUComponent.h>
+
+#include <cassert>
 
 namespace ausdk {
 
@@ -16,7 +20,7 @@ inline void ThrowBadAlloc()
 // x: number to be rounded; y: the power of 2 to which to round
 constexpr uint32_t RoundUpToMultipleOfPowerOf2(uint32_t x, uint32_t y) noexcept
 {
-	const auto mask = y - 1;
+	const uint32_t mask = y - 1u;
 #if DEBUG
 	assert((mask & y) == 0u); // verifies that y is a power of 2 NOLINT
 #endif

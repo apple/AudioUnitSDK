@@ -1,12 +1,16 @@
 /*!
 	@file		AudioUnitSDK/AUEffectBase.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUEffectBase_h
 #define AudioUnitSDK_AUEffectBase_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUSilentTimeout.h>
+#include <AudioUnitSDK/AUUtility.h>
 
 #include <memory>
 

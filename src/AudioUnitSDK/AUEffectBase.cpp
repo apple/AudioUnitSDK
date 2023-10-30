@@ -1,8 +1,9 @@
 /*!
 	@file		AudioUnitSDK/AUEffectBase.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUEffectBase.h>
+#include <AudioUnitSDK/AUUtility.h>
 
 #include <cstddef>
 
@@ -81,16 +82,13 @@ OSStatus AUEffectBase::Initialize()
 				}
 			}
 		}
-		if (!foundMatch) {
-			return kAudioUnitErr_FormatNotSupported;
-		}
+		AUSDK_Require(foundMatch, kAudioUnitErr_FormatNotSupported);
 	} else {
 		// there is no specifically published channel info
 		// so for those kinds of effects, the assumption is that the channels (whatever their
 		// number) should match on both scopes
-		if ((auNumOutputs != auNumInputs) || (auNumOutputs == 0)) {
-			return kAudioUnitErr_FormatNotSupported;
-		}
+		AUSDK_Require(
+			(auNumOutputs == auNumInputs) && (auNumOutputs != 0), kAudioUnitErr_FormatNotSupported);
 	}
 	MaintainKernels();
 
@@ -157,9 +155,7 @@ OSStatus AUEffectBase::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inSc
 	if (inScope == kAudioUnitScope_Global) {
 		switch (inID) {
 		case kAudioUnitProperty_BypassEffect: {
-			if (inDataSize < sizeof(UInt32)) {
-				return kAudioUnitErr_InvalidPropertyValue;
-			}
+			AUSDK_Require(inDataSize >= sizeof(UInt32), kAudioUnitErr_InvalidPropertyValue);
 
 			const bool tempNewSetting = *static_cast<const UInt32*>(inData) != 0;
 			// we're changing the state of bypass
@@ -217,19 +213,16 @@ bool AUEffectBase::StreamFormatWritable(AudioUnitScope /*scope*/, AudioUnitEleme
 OSStatus AUEffectBase::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitElement inElement,
 	const AudioStreamBasicDescription& inPrevFormat, const AudioStreamBasicDescription& inNewFormat)
 {
-	const OSStatus result =
-		AUBase::ChangeStreamFormat(inScope, inElement, inPrevFormat, inNewFormat);
-	if (result == noErr) {
-		// for the moment this only dependency we know about
-		// where a parameter's range may change is with the sample rate
-		// and effects are only publishing parameters in the global scope!
-		if (GetParamHasSampleRateDependency() &&
-			inPrevFormat.mSampleRate != inNewFormat.mSampleRate) {
-			PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
-		}
+	AUSDK_Require_noerr(AUBase::ChangeStreamFormat(inScope, inElement, inPrevFormat, inNewFormat));
+
+	// for the moment this only dependency we know about
+	// where a parameter's range may change is with the sample rate
+	// and effects are only publishing parameters in the global scope!
+	if (GetParamHasSampleRateDependency() && inPrevFormat.mSampleRate != inNewFormat.mSampleRate) {
+		PropertyChanged(kAudioUnitProperty_ParameterList, kAudioUnitScope_Global, 0);
 	}
 
-	return result;
+	return noErr;
 }
 
 
@@ -287,72 +280,66 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 OSStatus AUEffectBase::Render(
 	AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp, UInt32 nFrames)
 {
-	if (!HasInput(0)) {
-		return kAudioUnitErr_NoConnection;
+	AUSDK_Require(HasInput(0), kAudioUnitErr_NoConnection);
+
+	AUSDK_Require_noerr(
+		mMainInput->PullInput(ioActionFlags, inTimeStamp, 0 /* element */, nFrames));
+
+	if (ProcessesInPlace() && mMainOutput->WillAllocateBuffer()) {
+		mMainOutput->SetBufferList(mMainInput->GetBufferList());
 	}
 
 	OSStatus result = noErr;
 
-	result = mMainInput->PullInput(ioActionFlags, inTimeStamp, 0 /* element */, nFrames);
+	if (ShouldBypassEffect()) {
+		// leave silence bit alone
 
-	if (result == noErr) {
-		if (ProcessesInPlace() && mMainOutput->WillAllocateBuffer()) {
-			mMainOutput->SetBufferList(mMainInput->GetBufferList());
+		if (!ProcessesInPlace()) {
+			mMainInput->CopyBufferContentsTo(mMainOutput->GetBufferList());
 		}
+	} else {
+		auto& paramEventList = GetParamEventList();
 
-		if (ShouldBypassEffect()) {
-			// leave silence bit alone
-
-			if (!ProcessesInPlace()) {
-				mMainInput->CopyBufferContentsTo(mMainOutput->GetBufferList());
-			}
+		if (paramEventList.empty()) {
+			// this will read/write silence bit
+			result = ProcessBufferLists(
+				ioActionFlags, mMainInput->GetBufferList(), mMainOutput->GetBufferList(), nFrames);
 		} else {
-			auto& paramEventList = GetParamEventList();
+			// deal with scheduled parameters...
 
-			if (paramEventList.empty()) {
-				// this will read/write silence bit
-				result = ProcessBufferLists(ioActionFlags, mMainInput->GetBufferList(),
-					mMainOutput->GetBufferList(), nFrames);
-			} else {
-				// deal with scheduled parameters...
+			AudioBufferList& inputBufferList = mMainInput->GetBufferList();
+			AudioBufferList& outputBufferList = mMainOutput->GetBufferList();
 
-				AudioBufferList& inputBufferList = mMainInput->GetBufferList();
-				AudioBufferList& outputBufferList = mMainOutput->GetBufferList();
+			ScheduledProcessParams processParams{ .actionFlags = &ioActionFlags,
+				.inputBufferList = &inputBufferList,
+				.outputBufferList = &outputBufferList };
 
-				ScheduledProcessParams processParams{ .actionFlags = &ioActionFlags,
-					.inputBufferList = &inputBufferList,
-					.outputBufferList = &outputBufferList };
+			// divide up the buffer into slices according to scheduled params then
+			// do the DSP for each slice (ProcessScheduledSlice() called for each slice)
+			result = ProcessForScheduledParams(paramEventList, nFrames, &processParams);
 
-				// divide up the buffer into slices according to scheduled params then
-				// do the DSP for each slice (ProcessScheduledSlice() called for each slice)
-				result = ProcessForScheduledParams(paramEventList, nFrames, &processParams);
+			// fixup the buffer pointers to how they were before we started
+			const UInt32 channelSize = nFrames * mBytesPerFrame;
+			for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
+				const UInt32 size =
+					inputBufferList.mBuffers[i].mNumberChannels * channelSize;         // NOLINT
+				inputBufferList.mBuffers[i].mData =                                    // NOLINT
+					static_cast<std::byte*>(inputBufferList.mBuffers[i].mData) - size; // NOLINT
+				inputBufferList.mBuffers[i].mDataByteSize = size;                      // NOLINT
+			}
 
-
-				// fixup the buffer pointers to how they were before we started
-				const UInt32 channelSize = nFrames * mBytesPerFrame;
-				for (UInt32 i = 0; i < inputBufferList.mNumberBuffers; i++) {
-					const UInt32 size =
-						inputBufferList.mBuffers[i].mNumberChannels * channelSize;         // NOLINT
-					inputBufferList.mBuffers[i].mData =                                    // NOLINT
-						static_cast<std::byte*>(inputBufferList.mBuffers[i].mData) - size; // NOLINT
-					inputBufferList.mBuffers[i].mDataByteSize = size;                      // NOLINT
-				}
-
-				for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
-					const UInt32 size =
-						outputBufferList.mBuffers[i].mNumberChannels * channelSize; // NOLINT
-					outputBufferList.mBuffers[i].mData =                            // NOLINT
-						static_cast<std::byte*>(outputBufferList.mBuffers[i].mData) -
-						size;                                          // NOLINT
-					outputBufferList.mBuffers[i].mDataByteSize = size; // NOLINT
-				}
+			for (UInt32 i = 0; i < outputBufferList.mNumberBuffers; i++) {
+				const UInt32 size =
+					outputBufferList.mBuffers[i].mNumberChannels * channelSize;         // NOLINT
+				outputBufferList.mBuffers[i].mData =                                    // NOLINT
+					static_cast<std::byte*>(outputBufferList.mBuffers[i].mData) - size; // NOLINT
+				outputBufferList.mBuffers[i].mDataByteSize = size;                      // NOLINT
 			}
 		}
+	}
 
-		if (((ioActionFlags & kAudioUnitRenderAction_OutputIsSilence) != 0u) &&
-			!ProcessesInPlace()) {
-			AUBufferList::ZeroBuffer(mMainOutput->GetBufferList());
-		}
+	if (((ioActionFlags & kAudioUnitRenderAction_OutputIsSilence) != 0u) && !ProcessesInPlace()) {
+		AUBufferList::ZeroBuffer(mMainOutput->GetBufferList());
 	}
 
 	return result;

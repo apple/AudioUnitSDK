@@ -1,8 +1,14 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.cpp
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
+#include <AudioUnitSDK/AUConfig.h>
+
+#if AUSDK_HAVE_MIDI
+
 #include <AudioUnitSDK/AUMIDIBase.h>
+#include <AudioUnitSDK/AUUtility.h>
+
 #include <CoreMIDI/CoreMIDI.h>
 
 namespace ausdk {
@@ -168,9 +174,7 @@ constexpr uint8_t MIDIStatusNibbleValue(uint8_t status) noexcept { return (statu
 OSStatus AUMIDIBase::HandleMIDIEvent(
 	UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame)
 {
-	if (!mAUBaseInstance.IsInitialized()) {
-		return kAudioUnitErr_Uninitialized;
-	}
+	AUSDK_Require(mAUBaseInstance.IsInitialized(), kAudioUnitErr_Uninitialized);
 
 #if AUSDK_HAVE_MIDI_MAPPING
 	// you potentially have a choice to make here - if a param mapping matches, do you still want to
@@ -241,11 +245,11 @@ OSStatus AUMIDIBase::HandleNonNoteEvent(
 
 OSStatus AUMIDIBase::SysEx(const UInt8* inData, UInt32 inLength)
 {
-	if (!mAUBaseInstance.IsInitialized()) {
-		return kAudioUnitErr_Uninitialized;
-	}
+	AUSDK_Require(mAUBaseInstance.IsInitialized(), kAudioUnitErr_Uninitialized);
 
 	return HandleSysEx(inData, inLength);
 }
 
 } // namespace ausdk
+
+#endif // AUSDK_HAVE_MIDI

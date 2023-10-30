@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		394A97042576BF1700897571 /* AUMIDIUtility.h in Headers */ = {isa = PBXBuildFile; fileRef = 394A97032576BF1700897571 /* AUMIDIUtility.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		64339772294B5DDC00DCD59F /* AUThreadSafeListTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 64339771294B5DDC00DCD59F /* AUThreadSafeListTests.mm */; };
+		643D7987292BF34C00910294 /* AUThreadSafeList.h in Headers */ = {isa = PBXBuildFile; fileRef = 643D7986292BF34C00910294 /* AUThreadSafeList.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		9100832E24DF0EB6003E57AE /* AUInputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC75924D9181600725ABE /* AUInputElement.cpp */; };
 		9100832F24DF0EE7003E57AE /* AUOutputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC75824D9181600725ABE /* AUOutputElement.cpp */; };
 		9100833024DF0F2C003E57AE /* AUBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 914EC76224D9181600725ABE /* AUBase.cpp */; };
@@ -40,6 +42,7 @@
 		919B0CC62555C72000C59BDC /* AUBufferAllocator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 919B0CC42555C72000C59BDC /* AUBufferAllocator.cpp */; };
 		91E93AC324E8962D00BF7289 /* Tests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 91E93AC224E8962D00BF7289 /* Tests.mm */; };
 		91E93AC524E8962D00BF7289 /* libAudioUnitSDK.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 910C29CE24D910D300B9116B /* libAudioUnitSDK.a */; };
+		B49E353A29E8039C0093D6B7 /* AUConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = B49E353929E8039C0093D6B7 /* AUConfig.h */; settings = {ATTRIBUTES = (Public, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +64,8 @@
 
 /* Begin PBXFileReference section */
 		394A97032576BF1700897571 /* AUMIDIUtility.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AUMIDIUtility.h; sourceTree = "<group>"; };
+		64339771294B5DDC00DCD59F /* AUThreadSafeListTests.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AUThreadSafeListTests.mm; sourceTree = "<group>"; };
+		643D7986292BF34C00910294 /* AUThreadSafeList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AUThreadSafeList.h; sourceTree = "<group>"; };
 		9100832D24DF0C5B003E57AE /* AUUtility.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AUUtility.h; sourceTree = "<group>"; };
 		9100833524DF1C82003E57AE /* EmptyPlugIns.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EmptyPlugIns.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		9100833724DF1C82003E57AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -97,6 +102,7 @@
 		91E93AC024E8962D00BF7289 /* Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		91E93AC224E8962D00BF7289 /* Tests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Tests.mm; sourceTree = "<group>"; };
 		91E93AC424E8962D00BF7289 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B49E353929E8039C0093D6B7 /* AUConfig.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AUConfig.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -180,6 +186,7 @@
 		91E93AC124E8962D00BF7289 /* tests */ = {
 			isa = PBXGroup;
 			children = (
+				64339771294B5DDC00DCD59F /* AUThreadSafeListTests.mm */,
 				91E93AC224E8962D00BF7289 /* Tests.mm */,
 				91E93AC424E8962D00BF7289 /* Info.plist */,
 			);
@@ -232,6 +239,7 @@
 		B4888687282AC1D800521D1A /* AudioUnitSDK */ = {
 			isa = PBXGroup;
 			children = (
+				B49E353929E8039C0093D6B7 /* AUConfig.h */,
 				914EC76124D9181600725ABE /* AUBase.h */,
 				914EC77624D920CC00725ABE /* AUBuffer.h */,
 				914EC77A24D9225800725ABE /* AudioUnitSDK.h */,
@@ -244,6 +252,7 @@
 				914EC75F24D9181600725ABE /* AUPlugInDispatch.h */,
 				914EC75C24D9181600725ABE /* AUScopeElement.h */,
 				9100835224DF3DAC003E57AE /* AUSilentTimeout.h */,
+				643D7986292BF34C00910294 /* AUThreadSafeList.h */,
 				9100832D24DF0C5B003E57AE /* AUUtility.h */,
 				910C29D624D9115100B9116B /* ComponentBase.h */,
 				9100834B24DF3245003E57AE /* MusicDeviceBase.h */,
@@ -258,6 +267,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B49E353A29E8039C0093D6B7 /* AUConfig.h in Headers */,
 				9100836224E05892003E57AE /* AUBase.h in Headers */,
 				914EC77824D920CC00725ABE /* AUBuffer.h in Headers */,
 				914EC77B24D9225800725ABE /* AudioUnitSDK.h in Headers */,
@@ -270,6 +280,7 @@
 				394A97042576BF1700897571 /* AUMIDIUtility.h in Headers */,
 				9100835824E05892003E57AE /* AUScopeElement.h in Headers */,
 				9100835924E05892003E57AE /* AUSilentTimeout.h in Headers */,
+				643D7987292BF34C00910294 /* AUThreadSafeList.h in Headers */,
 				9100836124E05892003E57AE /* AUUtility.h in Headers */,
 				910C29D824D9115100B9116B /* ComponentBase.h in Headers */,
 				9100836024E05892003E57AE /* MusicDeviceBase.h in Headers */,
@@ -444,6 +455,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				64339772294B5DDC00DCD59F /* AUThreadSafeListTests.mm in Sources */,
 				91E93AC324E8962D00BF7289 /* Tests.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -504,7 +516,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -518,6 +530,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_FLOAT_CONVERSION = YES;
 				CLANG_WARN_IMPLICIT_SIGN_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
@@ -534,6 +547,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CLANG_WARN__EXIT_TIME_DESTRUCTORS = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -547,14 +561,16 @@
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_PEDANTIC = YES;
 				GCC_WARN_SIGN_COMPARE = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_PARAMETER = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LLVM_LTO = NO;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -577,7 +593,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
@@ -591,6 +607,7 @@
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_FLOAT_CONVERSION = YES;
 				CLANG_WARN_IMPLICIT_SIGN_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
@@ -607,6 +624,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CLANG_WARN__EXIT_TIME_DESTRUCTORS = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -614,14 +632,16 @@
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_PEDANTIC = YES;
 				GCC_WARN_SIGN_COMPARE = YES;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_PARAMETER = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LLVM_LTO = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -682,6 +702,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = (
+					"$(inherited)",
+					"-Wno-gnu-statement-expression",
+				);
 			};
 			name = Debug;
 		};
@@ -699,6 +723,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.apple.audio.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = (
+					"$(inherited)",
+					"-Wno-gnu-statement-expression",
+				);
 			};
 			name = Release;
 		};

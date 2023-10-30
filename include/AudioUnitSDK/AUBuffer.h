@@ -1,15 +1,17 @@
 /*!
 	@file		AudioUnitSDK/AUBuffer.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUBuffer_h
 #define AudioUnitSDK_AUBuffer_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUUtility.h>
 
-#include <AudioToolbox/AudioUnit.h>
-
 #include <cstddef>
+#include <cstring>
 #include <optional>
 
 namespace ausdk {
@@ -36,16 +38,12 @@ struct AllocatedBuffer {
 	@class	BufferAllocator
 	@brief	Class which allocates memory for internal audio buffers.
 
-	To customize, create a subclass and install an instance into the global via set_instance().
+	To customize, create a subclass and replace the BufferAllocator::instance() implementation.
 */
 class BufferAllocator {
 public:
 	/// Obtain the global instance, creating it if necessary.
 	static BufferAllocator& instance();
-
-	/// A client may install a custom global instance via this method. Throws an exception if
-	/// a default instance has already been created.
-	static void set_instance(BufferAllocator& instance);
 
 	BufferAllocator() = default;
 	virtual ~BufferAllocator() = default;

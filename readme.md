@@ -22,14 +22,26 @@ macOS (OS X) 10.9 / iOS 9.0 or later.
 
 ## Changelog
 
+### Version 1.2.0
+
+##### Additions
+
+- New header `AUConfig.h` for improved project organization.
+
+##### Changes
+
+- C++ language version to `C++20` for modern language features.
+
 ### Version 1.1.0
 
-The `Source` folder was split in two folders: `include` for public headers, and `src` for private source files.
+##### Changes
+
+- The `Source` folder was split in two folders: `include` for public headers, and `src` for private source files.
 Users building the AudioUnitSDK sources from within their Xcode project should update the source file locations and change the include path to `path/to/AudioUnitSDK/include`. 
 Include directives should be prefixed with AudioUnitSDK (i.e. `#include "AudioUnitSDK/AUBase.h"` instead of `#include "AUBase.h"`).
 
 ### Version 1.0.0
 
-Initial upload.
+- Initial upload.
 
-Copyright (C) 2021 Apple Inc. All rights reserved.
+Copyright (C) 2023 Apple Inc. All rights reserved.

@@ -1,12 +1,19 @@
 /*!
 	@file		AudioUnitSDK/AUInputElement.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUInputElement_h
 #define AudioUnitSDK_AUInputElement_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
 #include <AudioUnitSDK/AUBuffer.h>
 #include <AudioUnitSDK/AUScopeElement.h>
+#include <AudioUnitSDK/AUUtility.h>
+
+#include <AudioToolbox/AUComponent.h>
+#include <AudioToolbox/AudioUnitProperties.h>
 
 namespace ausdk {
 
@@ -70,17 +77,15 @@ inline OSStatus AUInputElement::PullInputWithBufferList(AudioUnitRenderActionFla
 			&inBufferList);
 	}
 
-	if (mInputType == EInputType::NoInput) { // defense: the guy upstream could have disconnected
-											 // it's a horrible thing to do, but may happen!
-		return kAudioUnitErr_NoConnection;
-	}
+	// defense: the upstream could have disconnected.
+	// it's a horrible thing to do, but may happen!
+	AUSDK_Require(mInputType != EInputType::NoInput, kAudioUnitErr_NoConnection);
 
 #if !TARGET_OS_IPHONE || DEBUG
 	if (theResult == noErr) { // if there's already an error, there's no point (and maybe some harm)
 							  // in validating.
-		if (ABL::IsBogusAudioBufferList(inBufferList) & 1) {
-			return kAudioUnitErr_InvalidPropertyValue;
-		}
+		AUSDK_Require(
+			!(ABL::IsBogusAudioBufferList(inBufferList) & 1), kAudioUnitErr_InvalidPropertyValue);
 	}
 #endif
 	return theResult;

@@ -1,11 +1,17 @@
 /*!
 	@file		AudioUnitSDK/MusicDeviceBase.h
-	@copyright	© 2000-2021 Apple Inc. All rights reserved.
+	@copyright	© 2000-2023 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_MusicDeviceBase_h
 #define AudioUnitSDK_MusicDeviceBase_h
 
+// clang-format off
+#include <AudioUnitSDK/AUConfig.h> // must come first
+// clang-format on
+#include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUMIDIBase.h>
+
+#include <AudioToolbox/MusicDevice.h>
 
 namespace ausdk {
 
@@ -33,7 +39,7 @@ public:
 		return AUMIDIBase::SysEx(inData, inLength);
 	}
 
-#if AUSDK_MIDI2_AVAILABLE
+#if AUSDK_HAVE_MIDI2
 	OSStatus MIDIEventList(
 		UInt32 inOffsetSampleFrame, const struct MIDIEventList* eventList) override
 	{
@@ -52,11 +58,6 @@ public:
 	OSStatus HandleNoteOff(
 		UInt8 inChannel, UInt8 inNoteNumber, UInt8 inVelocity, UInt32 inStartFrame) override;
 	virtual OSStatus GetInstrumentCount(UInt32& outInstCount) const;
-
-private:
-	OSStatus HandleStartNoteMessage(MusicDeviceInstrumentID inInstrument,
-		MusicDeviceGroupID inGroupID, NoteInstanceID* outNoteInstanceID, UInt32 inOffsetSampleFrame,
-		const MusicDeviceNoteParams* inParams);
 };
 
 } // namespace ausdk
