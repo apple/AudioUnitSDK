@@ -68,7 +68,7 @@ OSStatus AUInputElement::SetStreamFormat(const AudioStreamBasicDescription& fmt)
 }
 
 OSStatus AUInputElement::PullInput(AudioUnitRenderActionFlags& ioActionFlags,
-	const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames)
+	const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames) AUSDK_NOLOCK
 {
 	AUSDK_Require(IsActive(), kAudioUnitErr_NoConnection);
 

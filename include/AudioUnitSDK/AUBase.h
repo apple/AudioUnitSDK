@@ -134,26 +134,30 @@ public:
 	virtual OSStatus RemoveRenderNotification(AURenderCallback inProc, void* inRefCon);
 
 	virtual OSStatus GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-		AudioUnitElement inElement, AudioUnitParameterValue& outValue);
-	virtual OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-		AudioUnitElement inElement, AudioUnitParameterValue inValue, UInt32 inBufferOffsetInFrames);
+		AudioUnitElement inElement, AudioUnitParameterValue& outValue) AUSDK_NOLOCK;
 
-	[[nodiscard]] virtual bool CanScheduleParameters() const = 0;
+	virtual OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
+		AudioUnitElement inElement, AudioUnitParameterValue inValue,
+		UInt32 inBufferOffsetInFrames) AUSDK_NOLOCK;
+
+	[[nodiscard]] virtual bool CanScheduleParameters() const AUSDK_NOLOCK = 0;
 	virtual OSStatus ScheduleParameter(
-		const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents);
+		const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents) AUSDK_NOLOCK;
 
 	OSStatus DoRender(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		UInt32 inBusNumber, UInt32 inFramesToProcess, AudioBufferList& ioData);
+		UInt32 inBusNumber, UInt32 inFramesToProcess, AudioBufferList& ioData) AUSDK_NOLOCK;
+
 	OSStatus DoProcess(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		UInt32 inFramesToProcess, AudioBufferList& ioData);
+		UInt32 inFramesToProcess, AudioBufferList& ioData) AUSDK_NOLOCK;
+
 	OSStatus DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess,
 		UInt32 inNumberInputBufferLists, const AudioBufferList** inInputBufferLists,
-		UInt32 inNumberOutputBufferLists, AudioBufferList** ioOutputBufferLists);
+		UInt32 inNumberOutputBufferLists, AudioBufferList** ioOutputBufferLists) AUSDK_NOLOCK;
 
 	virtual OSStatus ProcessBufferLists(AudioUnitRenderActionFlags& /*ioActionFlags*/,
 		const AudioBufferList& /*inBuffer*/, AudioBufferList& /*outBuffer*/,
-		UInt32 /*inFramesToProcess*/)
+		UInt32 /*inFramesToProcess*/) AUSDK_NOLOCK
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -161,7 +165,7 @@ public:
 	virtual OSStatus ProcessMultipleBufferLists(AudioUnitRenderActionFlags& /*ioActionFlags*/,
 		UInt32 /*inFramesToProcess*/, UInt32 /*inNumberInputBufferLists*/,
 		const AudioBufferList** /*inInputBufferLists*/, UInt32 /*inNumberOutputBufferLists*/,
-		AudioBufferList** /*ioOutputBufferLists*/)
+		AudioBufferList** /*ioOutputBufferLists*/) AUSDK_NOLOCK
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -170,7 +174,7 @@ public:
 		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inOutputBusNumber*/,
 		UInt32 /*inNumberOfPackets*/, UInt32* /*outNumberOfPackets*/,
 		AudioStreamPacketDescription* /*outPacketDescriptions*/, AudioBufferList& /*ioData*/,
-		void* /*outMetadata*/, UInt32* /*outMetadataByteSize*/)
+		void* /*outMetadata*/, UInt32* /*outMetadataByteSize*/) AUSDK_NOLOCK
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -184,7 +188,8 @@ public:
 	// GetOutput(inBusNumber)->PrepareBuffer(nFrames) -- if PrepareBuffer is called, a
 	// copy may occur after rendering.
 	virtual OSStatus RenderBus(AudioUnitRenderActionFlags& ioActionFlags,
-		const AudioTimeStamp& inTimeStamp, UInt32 /*inBusNumber*/, UInt32 inNumberFrames)
+		const AudioTimeStamp& inTimeStamp, UInt32 /*inBusNumber*/,
+		UInt32 inNumberFrames) AUSDK_NOLOCK
 	{
 		if (NeedsToRender(inTimeStamp)) {
 			return Render(ioActionFlags, inTimeStamp, inNumberFrames);
@@ -197,7 +202,7 @@ public:
 	// GetOutput(0)->GetBufferList() instead of GetOutput(0)->PrepareBuffer(nFrames)
 	//  -- if PrepareBuffer is called, a copy may occur after rendering.
 	virtual OSStatus Render(AudioUnitRenderActionFlags& /*ioActionFlags*/,
-		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inNumberFrames*/)
+		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inNumberFrames*/) AUSDK_NOLOCK
 	{
 		return noErr;
 	}
@@ -248,9 +253,9 @@ public:
 #endif
 
 	// default is no latency, and unimplemented tail time
-	virtual Float64 GetLatency() { return 0.0; }
-	virtual Float64 GetTailTime() { return 0.0; }
-	virtual bool SupportsTail() { return false; }
+	virtual Float64 GetLatency() AUSDK_NOLOCK { return 0.0; }
+	virtual Float64 GetTailTime() AUSDK_NOLOCK { return 0.0; }
+	virtual bool SupportsTail() AUSDK_NOLOCK { return false; }
 
 	// Stream formats: scope will always be input or output
 	bool IsStreamFormatWritable(AudioUnitScope scope, AudioUnitElement element);
@@ -291,13 +296,13 @@ public:
 		return mScopes[inScope]; // NOLINT
 	}
 
-	virtual AUScope* GetScopeExtended(AudioUnitScope /*inScope*/) { return nullptr; }
+	virtual AUScope* GetScopeExtended(AudioUnitScope /*inScope*/) AUSDK_NOLOCK { return nullptr; }
 
 	AUScope& GlobalScope() { return mScopes[kAudioUnitScope_Global]; }
 	AUScope& Inputs() { return mScopes[kAudioUnitScope_Input]; }
 	AUScope& Outputs() { return mScopes[kAudioUnitScope_Output]; }
 	AUScope& Groups() { return mScopes[kAudioUnitScope_Group]; }
-	AUElement* Globals() { return mScopes[kAudioUnitScope_Global].GetElement(0); }
+	AUElement* Globals() AUSDK_NOLOCK { return mScopes[kAudioUnitScope_Global].GetElement(0); }
 
 	void SetNumberOfElements(AudioUnitScope inScope, UInt32 numElements);
 	virtual std::unique_ptr<AUElement> CreateElement(
@@ -528,11 +533,13 @@ protected:
 
 	void SetWantsRenderThreadID(bool inFlag);
 
-	OSStatus SetRenderError(OSStatus inErr)
+	OSStatus SetRenderError(OSStatus inErr) AUSDK_NOLOCK
 	{
 		if (inErr != noErr && mLastRenderError == 0) {
 			mLastRenderError = inErr;
-			PropertyChanged(kAudioUnitProperty_LastRenderError, kAudioUnitScope_Global, 0);
+			// TODO: This illustrates a weakness in the interface
+			AUSDK_RT_UNSAFE(
+				PropertyChanged(kAudioUnitProperty_LastRenderError, kAudioUnitScope_Global, 0));
 		}
 		return inErr;
 	}
@@ -617,7 +624,7 @@ protected:
 	// appropriate immediate or ramped parameter values for the corresponding scopes and elements,
 	// then calling ProcessScheduledSlice() to do the actual DSP for each of these divisions.
 	virtual OSStatus ProcessForScheduledParams(
-		ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData);
+		ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData) AUSDK_NOLOCK;
 
 	//	This method is called (potentially repeatedly) by ProcessForScheduledParams()
 	//	in order to perform the actual DSP required for this portion of the entire buffer
@@ -628,7 +635,7 @@ protected:
 	//  in order to do the appropriate DSP.  AUEffectBase already overrides this for standard
 	//	effect AudioUnits.
 	virtual OSStatus ProcessScheduledSlice(void* /*inUserData*/, UInt32 /*inStartFrameInBuffer*/,
-		UInt32 /*inSliceFramesToProcess*/, UInt32 /*inTotalBufferFrames*/)
+		UInt32 /*inSliceFramesToProcess*/, UInt32 /*inTotalBufferFrames*/) AUSDK_NOLOCK
 	{
 		// default implementation does nothing.
 		return noErr;

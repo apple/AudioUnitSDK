@@ -1013,7 +1013,7 @@ OSStatus AUBase::RemoveRenderNotification(AURenderCallback inProc, void* inRefCo
 //_____________________________________________________________________________
 //
 OSStatus AUBase::GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-	AudioUnitElement inElement, AudioUnitParameterValue& outValue)
+	AudioUnitElement inElement, AudioUnitParameterValue& outValue) AUSDK_NOLOCK
 {
 	const auto& elem = Element(inScope, inElement);
 	outValue = elem.GetParameter(inID);
@@ -1024,7 +1024,8 @@ OSStatus AUBase::GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
 //_____________________________________________________________________________
 //
 OSStatus AUBase::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-	AudioUnitElement inElement, AudioUnitParameterValue inValue, UInt32 /*inBufferOffsetInFrames*/)
+	AudioUnitElement inElement, AudioUnitParameterValue inValue,
+	UInt32 /*inBufferOffsetInFrames*/) AUSDK_NOLOCK
 {
 	auto& elem = Element(inScope, inElement);
 	elem.SetParameter(inID, inValue);
@@ -1034,7 +1035,7 @@ OSStatus AUBase::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
 //_____________________________________________________________________________
 //
 OSStatus AUBase::ScheduleParameter(
-	const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents)
+	const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents) AUSDK_NOLOCK
 {
 	const bool canScheduleParameters = CanScheduleParameters();
 
@@ -1046,7 +1047,8 @@ OSStatus AUBase::ScheduleParameter(
 				pe.eventValues.immediate.bufferOffset); // NOLINT union
 		}
 		if (canScheduleParameters) {
-			mParamEventList.push_back(pe);
+			// TODO: This has some reserved capacity so it's "usually" safe.
+			AUSDK_RT_UNSAFE(mParamEventList.push_back(pe));
 		}
 	}
 
@@ -1056,7 +1058,7 @@ OSStatus AUBase::ScheduleParameter(
 // ____________________________________________________________________________
 //
 constexpr bool ParameterEventListSortPredicate(
-	const AudioUnitParameterEvent& ev1, const AudioUnitParameterEvent& ev2) noexcept
+	const AudioUnitParameterEvent& ev1, const AudioUnitParameterEvent& ev2) AUSDK_NOLOCK
 {
 	// ramp.startBufferOffset is signed
 	const SInt32 offset1 =
@@ -1075,7 +1077,7 @@ constexpr bool ParameterEventListSortPredicate(
 // ____________________________________________________________________________
 //
 OSStatus AUBase::ProcessForScheduledParams(
-	ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData)
+	ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData) AUSDK_NOLOCK
 {
 	OSStatus result = noErr;
 
@@ -1085,7 +1087,7 @@ OSStatus AUBase::ProcessForScheduledParams(
 
 
 	// sort the ParameterEventList by startBufferOffset
-	std::sort(inParamList.begin(), inParamList.end(), ParameterEventListSortPredicate);
+	std::sort(inParamList.begin(), inParamList.end(), nolock_fp{ ParameterEventListSortPredicate });
 
 	while (framesRemaining > 0) {
 		// first of all, go through the ramped automation events and find out where the next
@@ -1194,7 +1196,7 @@ void AUBase::SetWantsRenderThreadID(bool inFlag)
 //
 OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, UInt32 inBusNumber, UInt32 inFramesToProcess,
-	AudioBufferList& ioData)
+	AudioBufferList& ioData) AUSDK_NOLOCK
 {
 	const auto errorExit = [this](OSStatus error) {
 		AUSDK_LogError("  from %s, render err: %d", GetLoggingString(), static_cast<int>(error));
@@ -1260,7 +1262,8 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			// TODO: get_id is safe but unannotated
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (mRenderCallbacksTouched) {
@@ -1268,8 +1271,10 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 
 			AudioUnitRenderActionFlags flags = ioActionFlags | kAudioUnitRenderAction_PreRender;
 			for (const RenderCallback& rc : mRenderCallbacks) {
+				AUSDK_RT_UNSAFE_BEGIN("AURenderCallback is not yet annotated")
 				(*static_cast<AURenderCallback>(rc.mRenderNotify))(rc.mRenderNotifyRefCon, &flags,
 					&inTimeStamp, inBusNumber, inFramesToProcess, &ioData);
+				AUSDK_RT_UNSAFE_END
 			}
 		}
 
@@ -1286,8 +1291,10 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 			}
 
 			for (const RenderCallback& rc : mRenderCallbacks) {
+				AUSDK_RT_UNSAFE_BEGIN("AURenderCallback is not yet annotated")
 				(*static_cast<AURenderCallback>(rc.mRenderNotify))(rc.mRenderNotifyRefCon, &flags,
 					&inTimeStamp, inBusNumber, inFramesToProcess, &ioData);
+				AUSDK_RT_UNSAFE_END
 			}
 		}
 
@@ -1298,11 +1305,13 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 		if (!mParamEventList.empty()) {
 			mParamEventList.clear();
 		}
+		AUSDK_RT_UNSAFE_BEGIN("TODO: stop using exceptions")
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
 	return theError;
 }
 
@@ -1314,7 +1323,8 @@ inline bool CheckRenderArgs(AudioUnitRenderActionFlags flags)
 //_____________________________________________________________________________
 //
 OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
-	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess, AudioBufferList& ioData)
+	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess,
+	AudioBufferList& ioData) AUSDK_NOLOCK
 {
 	const auto errorExit = [this](OSStatus error) {
 		AUSDK_LogError("  from %s, process err: %d", GetLoggingString(), static_cast<int>(error));
@@ -1370,7 +1380,8 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			// TODO: get_id is safe but unannotated
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (NeedsToRender(inTimeStamp)) {
@@ -1379,18 +1390,20 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 			theError = noErr;
 		}
 
+		AUSDK_RT_UNSAFE_BEGIN("TODO: stop using exceptions")
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
 	return theError;
 }
 
 OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess, UInt32 inNumberInputBufferLists,
 	const AudioBufferList** inInputBufferLists, UInt32 inNumberOutputBufferLists,
-	AudioBufferList** ioOutputBufferLists)
+	AudioBufferList** ioOutputBufferLists) AUSDK_NOLOCK
 {
 	const auto errorExit = [this](OSStatus error) {
 		AUSDK_LogError(
@@ -1507,7 +1520,8 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			// TODO: get_id is safe but unannotated
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (NeedsToRender(inTimeStamp)) {
@@ -1517,11 +1531,13 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		} else {
 			theError = noErr;
 		}
+		AUSDK_RT_UNSAFE_BEGIN("TODO: stop using exceptions")
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
 	return theError;
 }
 

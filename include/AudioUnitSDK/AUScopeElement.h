@@ -75,7 +75,7 @@ class flat_map {
 	using KVPair = std::pair<Key, Value>;
 	using Impl = std::vector<std::pair<Key, Value>>;
 
-	static bool keyless(const KVPair& item, Key k) { return k > item.first; }
+	static bool keyless(const KVPair& item, Key k) AUSDK_NOLOCK { return k > item.first; }
 
 	Impl mImpl;
 
@@ -94,10 +94,13 @@ public:
 
 	[[nodiscard]] const_iterator lower_bound(Key k) const
 	{
-		return std::lower_bound(mImpl.cbegin(), mImpl.cend(), k, keyless);
+		return std::lower_bound(mImpl.cbegin(), mImpl.cend(), k, nolock_fp{ keyless });
 	}
 
-	iterator lower_bound(Key k) { return std::lower_bound(mImpl.begin(), mImpl.end(), k, keyless); }
+	iterator lower_bound(Key k)
+	{
+		return std::lower_bound(mImpl.begin(), mImpl.end(), k, nolock_fp{ keyless });
+	}
 
 	[[nodiscard]] const_iterator find(Key k) const
 	{
@@ -179,12 +182,13 @@ public:
 	}
 	virtual void GetParameterList(AudioUnitParameterID* outList);
 	[[nodiscard]] bool HasParameterID(AudioUnitParameterID paramID) const;
-	[[nodiscard]] AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID) const;
+	[[nodiscard]] AudioUnitParameterValue GetParameter(
+		AudioUnitParameterID paramID) const AUSDK_NOLOCK;
 
 	// Only set okWhenInitialized to true when you know the outside world cannot access this
 	// element. Otherwise the parameter map could get corrupted.
 	void SetParameter(AudioUnitParameterID paramID, AudioUnitParameterValue value,
-		bool okWhenInitialized = false);
+		bool okWhenInitialized = false) AUSDK_NOLOCK;
 
 	// Only set okWhenInitialized to true when you know the outside world cannot access this
 	// element. Otherwise the parameter map could get corrupted. N.B. This only handles
@@ -192,7 +196,7 @@ public:
 	// AUBase::ProcessForScheduledParams.
 	virtual void SetScheduledEvent(AudioUnitParameterID paramID,
 		const AudioUnitParameterEvent& inEvent, UInt32 inSliceOffsetInBuffer,
-		UInt32 inSliceDurationFrames, bool okWhenInitialized = false);
+		UInt32 inSliceDurationFrames, bool okWhenInitialized = false) AUSDK_NOLOCK;
 
 	[[nodiscard]] AUBase& GetAudioUnit() const noexcept { return mAudioUnit; }
 
@@ -342,8 +346,8 @@ public:
 		SetNumberOfElements(numElements);
 	}
 	virtual void SetNumberOfElements(UInt32 numElements) = 0;
-	virtual UInt32 GetNumberOfElements() = 0;
-	virtual AUElement* GetElement(UInt32 elementIndex) = 0;
+	virtual UInt32 GetNumberOfElements() AUSDK_NOLOCK = 0;
+	virtual AUElement* GetElement(UInt32 elementIndex) AUSDK_NOLOCK = 0;
 
 	[[nodiscard]] AUBase* GetCreator() const noexcept { return mCreator; }
 	[[nodiscard]] AudioUnitScope GetScope() const noexcept { return mScope; }
@@ -391,7 +395,7 @@ public:
 
 		return static_cast<UInt32>(mElements.size());
 	}
-	[[nodiscard]] AUElement* GetElement(UInt32 elementIndex) const
+	[[nodiscard]] AUElement* GetElement(UInt32 elementIndex) const AUSDK_NOLOCK
 	{
 		if (mDelegate != nullptr) {
 			return mDelegate->GetElement(elementIndex);

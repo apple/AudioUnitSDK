@@ -51,7 +51,7 @@ bool AUElement::HasParameterID(AudioUnitParameterID paramID) const
 //
 //	caller assumes that this is actually an immediate parameter
 //
-AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) const
+AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) const AUSDK_NOLOCK
 {
 	if (mUseIndexedParameters) {
 		ausdk::ThrowExceptionIf(
@@ -65,8 +65,8 @@ AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) co
 
 //_____________________________________________________________________________
 //
-void AUElement::SetParameter(
-	AudioUnitParameterID paramID, AudioUnitParameterValue inValue, bool okWhenInitialized)
+void AUElement::SetParameter(AudioUnitParameterID paramID, AudioUnitParameterValue inValue,
+	bool okWhenInitialized) AUSDK_NOLOCK
 {
 	if (mUseIndexedParameters) {
 		ausdk::ThrowExceptionIf(
@@ -87,7 +87,9 @@ void AUElement::SetParameter(
 					mAudioUnit.GetLoggingString(), static_cast<unsigned>(paramID));
 			} else {
 				// create new entry in map for the paramID (only happens first time)
+				AUSDK_RT_UNSAFE_BEGIN("TODO: Provide safe alternative")
 				mParameters[paramID] = ParameterValue{ inValue };
+				AUSDK_RT_UNSAFE_END
 			}
 		} else {
 			// paramID already exists in map so simply change its value
@@ -100,7 +102,7 @@ void AUElement::SetParameter(
 //
 void AUElement::SetScheduledEvent(AudioUnitParameterID paramID,
 	const AudioUnitParameterEvent& inEvent, UInt32 /*inSliceOffsetInBuffer*/,
-	UInt32 /*inSliceDurationFrames*/, bool okWhenInitialized)
+	UInt32 /*inSliceDurationFrames*/, bool okWhenInitialized) AUSDK_NOLOCK
 {
 	if (inEvent.eventType != kParameterEvent_Immediate) {
 		AUSDK_LogError("Warning: %s was passed a ramped parameter event but does not implement "

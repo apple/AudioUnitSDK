@@ -84,14 +84,17 @@ void BufferAllocator::Deallocate(AllocatedBuffer* allocatedBuffer)
 	free(allocatedBuffer);
 }
 
+// TODO: Make variants that do not throw
 
-AudioBufferList& AllocatedBuffer::Prepare(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer)
+AudioBufferList& AllocatedBuffer::Prepare(
+	UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_NOLOCK
 {
 	if (mAudioBufferList.mNumberBuffers > mMaximumNumberBuffers) {
-		throw std::out_of_range("AllocatedBuffer::Prepare(): too many buffers");
+		AUSDK_RT_UNSAFE(throw std::out_of_range("AllocatedBuffer::Prepare(): too many buffers"));
 	}
 	if (bytesPerBuffer > mMaximumBytesPerBuffer) {
-		throw std::out_of_range("AllocatedBuffer::Prepare(): insufficient capacity");
+		AUSDK_RT_UNSAFE(
+			throw std::out_of_range("AllocatedBuffer::Prepare(): insufficient capacity"));
 	}
 
 	auto* ptr = static_cast<Byte*>(mBufferData);
@@ -105,15 +108,18 @@ AudioBufferList& AllocatedBuffer::Prepare(UInt32 channelsPerBuffer, UInt32 bytes
 		ptr += mMaximumBytesPerBuffer; // NOLINT ptr math
 	}
 	if (ptr > ptrend) {
-		throw std::out_of_range("AllocatedBuffer::Prepare(): insufficient capacity");
+		AUSDK_RT_UNSAFE(
+			throw std::out_of_range("AllocatedBuffer::Prepare(): insufficient capacity"));
 	}
 	return mAudioBufferList;
 }
 
-AudioBufferList& AllocatedBuffer::PrepareNull(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer)
+AudioBufferList& AllocatedBuffer::PrepareNull(
+	UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_NOLOCK
 {
 	if (mAudioBufferList.mNumberBuffers > mMaximumNumberBuffers) {
-		throw std::out_of_range("AllocatedBuffer::PrepareNull(): too many buffers");
+		AUSDK_RT_UNSAFE(
+			throw std::out_of_range("AllocatedBuffer::PrepareNull(): too many buffers"));
 	}
 	for (UInt32 bufIdx = 0, nBufs = mAudioBufferList.mNumberBuffers; bufIdx < nBufs; ++bufIdx) {
 		auto& buf = mAudioBufferList.mBuffers[bufIdx]; // NOLINT
@@ -125,7 +131,7 @@ AudioBufferList& AllocatedBuffer::PrepareNull(UInt32 channelsPerBuffer, UInt32 b
 }
 
 AudioBufferList& AUBufferList::PrepareBuffer(
-	const AudioStreamBasicDescription& format, UInt32 nFrames)
+	const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_NOLOCK
 {
 	ausdk::ThrowExceptionIf(nFrames > mAllocatedFrames, kAudioUnitErr_TooManyFramesToProcess);
 
@@ -146,7 +152,7 @@ AudioBufferList& AUBufferList::PrepareBuffer(
 }
 
 AudioBufferList& AUBufferList::PrepareNullBuffer(
-	const AudioStreamBasicDescription& format, UInt32 nFrames)
+	const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_NOLOCK
 {
 	UInt32 nStreams = 0;
 	UInt32 channelsPerStream = 0;

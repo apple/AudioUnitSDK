@@ -41,10 +41,10 @@ public:
 		return mInputType == EInputType::FromConnection;
 	}
 	OSStatus PullInput(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		AudioUnitElement inElement, UInt32 nFrames);
+		AudioUnitElement inElement, UInt32 nFrames) AUSDK_NOLOCK;
 	OSStatus PullInputWithBufferList(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames,
-		AudioBufferList& inBufferList);
+		AudioBufferList& inBufferList) AUSDK_NOLOCK;
 
 protected:
 	void Disconnect();
@@ -63,10 +63,11 @@ private:
 
 inline OSStatus AUInputElement::PullInputWithBufferList(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames,
-	AudioBufferList& inBufferList)
+	AudioBufferList& inBufferList) AUSDK_NOLOCK
 {
 	OSStatus theResult = noErr;
 
+	AUSDK_RT_UNSAFE_BEGIN("AudioUnitRender and AURenderCallback are not yet annotated")
 	if (HasConnection()) {
 		// only support connections for V2 audio units
 		theResult = AudioUnitRender(mConnection.sourceAudioUnit, &ioActionFlags, &inTimeStamp,
@@ -76,6 +77,7 @@ inline OSStatus AUInputElement::PullInputWithBufferList(AudioUnitRenderActionFla
 		theResult = (mInputProc)(mInputProcRefCon, &ioActionFlags, &inTimeStamp, inElement, nFrames,
 			&inBufferList);
 	}
+	AUSDK_RT_UNSAFE_END
 
 	// defense: the upstream could have disconnected.
 	// it's a horrible thing to do, but may happen!

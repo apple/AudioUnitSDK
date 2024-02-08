@@ -22,7 +22,7 @@
 #include <cstddef>
 #include <cstring>
 
-#define CATCH_EXCEPTIONS_IN_RENDER_METHODS TARGET_OS_OSX                                   // NOLINT
+#define CATCH_EXCEPTIONS_IN_RENDER_METHODS 0 // was: TARGET_OS_OSX TODO: reconcile with nolock
 #define AUSDK_HAVE_MUSIC_DEVICE_PREPARE_RELEASE (AUSDK_HAVE_MUSIC_DEVICE && TARGET_OS_OSX) // NOLINT
 
 namespace ausdk {
@@ -310,7 +310,7 @@ static OSStatus AUMethodScheduleParameters(
 
 static OSStatus AUMethodRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
 	const AudioTimeStamp* inTimeStamp, UInt32 inOutputBusNumber, UInt32 inNumberFrames,
-	AudioBufferList* ioData)
+	AudioBufferList* ioData) AUSDK_NOLOCK
 {
 	OSStatus result = noErr;
 
@@ -342,7 +342,7 @@ static OSStatus AUMethodRender(void* self, AudioUnitRenderActionFlags* ioActionF
 static OSStatus AUMethodComplexRender(void* self, AudioUnitRenderActionFlags* ioActionFlags,
 	const AudioTimeStamp* inTimeStamp, UInt32 inOutputBusNumber, UInt32 inNumberOfPackets,
 	UInt32* outNumberOfPackets, AudioStreamPacketDescription* outPacketDescriptions,
-	AudioBufferList* ioData, void* outMetadata, UInt32* outMetadataByteSize)
+	AudioBufferList* ioData, void* outMetadata, UInt32* outMetadataByteSize) AUSDK_NOLOCK
 {
 	OSStatus result = noErr;
 
@@ -384,7 +384,7 @@ static OSStatus AUMethodReset(void* self, AudioUnitScope scope, AudioUnitElement
 }
 
 static OSStatus AUMethodProcess(void* self, AudioUnitRenderActionFlags* ioActionFlags,
-	const AudioTimeStamp* inTimeStamp, UInt32 inNumberFrames, AudioBufferList* ioData)
+	const AudioTimeStamp* inTimeStamp, UInt32 inNumberFrames, AudioBufferList* ioData) AUSDK_NOLOCK
 {
 	OSStatus result = noErr;
 
@@ -423,7 +423,7 @@ static OSStatus AUMethodProcess(void* self, AudioUnitRenderActionFlags* ioAction
 static OSStatus AUMethodProcessMultiple(void* self, AudioUnitRenderActionFlags* ioActionFlags,
 	const AudioTimeStamp* inTimeStamp, UInt32 inNumberFrames, UInt32 inNumberInputBufferLists,
 	const AudioBufferList** inInputBufferLists, UInt32 inNumberOutputBufferLists,
-	AudioBufferList** ioOutputBufferLists)
+	AudioBufferList** ioOutputBufferLists) AUSDK_NOLOCK
 {
 	OSStatus result = noErr;
 

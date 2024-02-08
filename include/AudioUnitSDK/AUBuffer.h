@@ -30,8 +30,8 @@ struct AllocatedBuffer {
 	AudioBufferList mAudioBufferList;
 	// opaque variable-length data may follow the AudioBufferList
 
-	AudioBufferList& Prepare(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer);
-	AudioBufferList& PrepareNull(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer);
+	AudioBufferList& Prepare(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_NOLOCK;
+	AudioBufferList& PrepareNull(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_NOLOCK;
 };
 
 /*!
@@ -76,8 +76,10 @@ public:
 	AUBufferList& operator=(const AUBufferList&) = delete;
 	AUBufferList& operator=(AUBufferList&&) = delete;
 
-	AudioBufferList& PrepareBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames);
-	AudioBufferList& PrepareNullBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames);
+	AudioBufferList& PrepareBuffer(
+		const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_NOLOCK;
+	AudioBufferList& PrepareNullBuffer(
+		const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_NOLOCK;
 
 	AudioBufferList& SetBufferList(const AudioBufferList& abl)
 	{

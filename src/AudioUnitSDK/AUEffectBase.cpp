@@ -234,7 +234,7 @@ OSStatus AUEffectBase::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitEleme
 //	according to the timestamps on the scheduled parameters...
 //
 OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartFrameInBuffer*/,
-	UInt32 inSliceFramesToProcess, UInt32 /*inTotalBufferFrames*/)
+	UInt32 inSliceFramesToProcess, UInt32 /*inTotalBufferFrames*/) AUSDK_NOLOCK
 {
 	const ScheduledProcessParams& sliceParams = *static_cast<ScheduledProcessParams*>(inUserData);
 
@@ -277,8 +277,8 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 // ____________________________________________________________________________
 //
 
-OSStatus AUEffectBase::Render(
-	AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp, UInt32 nFrames)
+OSStatus AUEffectBase::Render(AudioUnitRenderActionFlags& ioActionFlags,
+	const AudioTimeStamp& inTimeStamp, UInt32 nFrames) AUSDK_NOLOCK
 {
 	AUSDK_Require(HasInput(0), kAudioUnitErr_NoConnection);
 
@@ -347,7 +347,8 @@ OSStatus AUEffectBase::Render(
 
 
 OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFlags,
-	const AudioBufferList& inBuffer, AudioBufferList& outBuffer, UInt32 inFramesToProcess)
+	const AudioBufferList& inBuffer, AudioBufferList& outBuffer,
+	UInt32 inFramesToProcess) AUSDK_NOLOCK
 {
 	if (ShouldBypassEffect()) {
 		return noErr;

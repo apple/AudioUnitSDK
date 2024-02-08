@@ -32,6 +32,9 @@
 #pragma mark -
 #pragma mark Error-handling macros
 
+// TODO: how to restore the ability to log safely?
+#define AUSDK_NO_LOGGING 1
+
 #ifndef AUSDK_LOG_OBJECT
 #define AUSDK_LOG_OBJECT OS_LOG_DEFAULT // NOLINT macro
 #endif                                  // AUSDK_LOG_OBJECT
@@ -70,11 +73,95 @@
 		}                                                                                          \
 	} while (0)
 
+
+// clang-format off
+
+/*!
+	@macro	AUSDK_NOLOCK
+	@brief	Declares a function/function type as `nolock`.
+	
+	Example placement:
+		`void func(int param) AUSDK_NOLOCK;`
+*/
+#if defined(__has_attribute) && __has_attribute(nolock)
+#  ifdef __cplusplus
+#    define AUSDK_NOLOCK [[clang::nolock]]
+#  else
+#    define AUSDK_NOLOCK __attribute__((nolock))
+#  endif
+#else
+#  define AUSDK_NOLOCK
+#endif
+
+// TODO: AUSDK_NOLOCK should include noexcept, but this project isn't exception-clean.
+// Workaround:
+#pragma clang diagnostic ignored "-Wperf-annotation-implies-noexcept"
+// TODO: Follow changes to names of diagnostic groups (this and perf-annotation)
+
+/*!
+	@macro	AUSDK_RT_UNSAFE_BEGIN
+	@brief	Begins a region of code as exempt from nolock checks.
+
+	N.B. Every use of this is a maintenance and safety liability; use as a last resort.
+*/
+#define AUSDK_RT_UNSAFE_BEGIN(reason)                                \
+	_Pragma("clang diagnostic push")                                 \
+	_Pragma("clang diagnostic ignored \"-Wunknown-warning-option\"") \
+	_Pragma("clang diagnostic ignored \"-Wperf-annotation\"")
+
+/*!
+	@macro	AUSDK_RT_UNSAFE_END
+	@brief	Ends a region of code which is exempt from nolock checks.
+*/
+#define AUSDK_RT_UNSAFE_END \
+	_Pragma("clang diagnostic pop")
+
+/*!
+	@macro	AUSDK_RT_UNSAFE
+	@brief	Disables nolock checks during the evaluation of the expression.
+
+	N.B. Every use of this is a maintenance and safety liability; use as a last resort.
+*/
+#define AUSDK_RT_UNSAFE(...)                                         \
+	_Pragma("clang diagnostic push")                                 \
+	_Pragma("clang diagnostic ignored \"-Wunknown-warning-option\"") \
+	_Pragma("clang diagnostic ignored \"-Wperf-annotation\"")        \
+	__VA_ARGS__                                                      \
+	_Pragma("clang diagnostic pop")
+
+// clang-format on
+
+
 #pragma mark -
 
 // -------------------------------------------------------------------------------------------------
 
 namespace ausdk {
+
+// -------------------------------------------------------------------------------------------------
+
+/// A wrapper to preserve the nolock attribute on a function pointer. Copied from the nolock
+/// proposal.
+template <typename>
+class nolock_fp;
+
+template <typename R, typename... Args>
+class nolock_fp<R(Args...)> {
+public:
+	using impl_t = R (*)(Args...) AUSDK_NOLOCK;
+
+private:
+	impl_t mImpl;
+
+public:
+	nolock_fp(impl_t f) : mImpl{ f } {}
+
+	R operator()(Args... args) const { return mImpl(std::forward<Args>(args)...); }
+};
+
+// deduction guide (copied from std::function)
+template <class R, class... ArgTypes>
+nolock_fp(R (*)(ArgTypes...)) -> nolock_fp<R(ArgTypes...)>;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -89,24 +176,33 @@ public:
 	const OSStatus mError;
 };
 
+// Bottleneck everything that throws
+[[noreturn]] inline void ThrowAUException(
+	OSStatus err) AUSDK_NOLOCK // called on realtime threads - but not safe
+{
+	AUSDK_RT_UNSAFE_BEGIN("TODO")
+	throw AUException{ err };
+	AUSDK_RT_UNSAFE_END
+}
+
 inline void ThrowExceptionIf(bool condition, OSStatus err)
 {
 	if (condition) {
 		AUSDK_LogError("throwing %d", static_cast<int>(err));
-		throw AUException{ err };
+		ThrowAUException(err);
 	}
 }
 
 [[noreturn]] inline void Throw(OSStatus err)
 {
 	AUSDK_LogError("throwing %d", static_cast<int>(err));
-	throw AUException{ err };
+	ThrowAUException(err);
 }
 
 inline void ThrowQuietIf(bool condition, OSStatus err)
 {
 	if (condition) {
-		throw AUException{ err };
+		ThrowAUException(err);
 	}
 }
 
