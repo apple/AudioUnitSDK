@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/ComponentBase.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_ComponentBase_h
 #define AudioUnitSDK_ComponentBase_h
@@ -82,17 +82,16 @@ private:
 */
 struct AudioComponentPlugInInstance {
 	// The AudioComponentPlugInInterface must remain first
+	AudioComponentPlugInInterface mPlugInInterface{};
 
-	AudioComponentPlugInInterface mPlugInInterface;
+	void* (*mConstruct)(void* memory, AudioComponentInstance ci){ nullptr };
 
-	void* (*mConstruct)(void* memory, AudioComponentInstance ci);
+	void (*mDestruct)(void* memory){ nullptr };
 
-	void (*mDestruct)(void* memory);
-
-	std::array<void*, 2> mPad; // pad to a 16-byte boundary (in either 32 or 64 bit mode)
-	UInt32
-		mInstanceStorage; // the ACI implementation object is constructed into this memory
-						  // this member is just a placeholder. it is aligned to a 16byte boundary
+	std::array<void*, 2> mPad{}; // pad to a 16-byte boundary (in either 32 or 64 bit mode)
+	// the ACI implementation object is constructed into this memory
+	// (this member is just a placeholder. it is aligned to a 16-byte boundary)
+	UInt32 mInstanceStorage{ 0 };
 };
 
 /*!
@@ -126,8 +125,7 @@ public:
 		acpi->mPlugInInterface.reserved = nullptr;
 		acpi->mConstruct = Construct;
 		acpi->mDestruct = Destruct;
-		acpi->mPad[0] = nullptr;
-		acpi->mPad[1] = nullptr;
+		acpi->mPad.fill(nullptr);
 		return &acpi->mPlugInInterface;
 	}
 

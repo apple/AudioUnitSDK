@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBase.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 // clang-format off
 #include <AudioUnitSDK/AUConfig.h> // must come first
@@ -12,9 +12,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <limits>
+#include <span>
 
 namespace ausdk {
 
@@ -61,19 +64,11 @@ public:
 };
 #endif
 
-static std::once_flag sAUBaseCFStringsInitialized{}; // NOLINT non-const global
-// this is used for the presets
-static CFStringRef kUntitledString = nullptr; // NOLINT non-const global
-// these are the current keys for the class info document
-static CFStringRef kVersionString = nullptr;       // NOLINT non-const global
-static CFStringRef kTypeString = nullptr;          // NOLINT non-const global
-static CFStringRef kSubtypeString = nullptr;       // NOLINT non-const global
-static CFStringRef kManufacturerString = nullptr;  // NOLINT non-const global
-static CFStringRef kDataString = nullptr;          // NOLINT non-const global
-static CFStringRef kNameString = nullptr;          // NOLINT non-const global
-static CFStringRef kRenderQualityString = nullptr; // NOLINT non-const global
-static CFStringRef kElementNameString = nullptr;   // NOLINT non-const global
-static CFStringRef kPartString = nullptr;          // NOLINT non-const global
+static CFStringRef GetPresetDefaultName() noexcept
+{
+	static const auto name = CFSTR("Untitled");
+	return name;
+}
 
 static constexpr auto kNoLastRenderedSampleTime = std::numeric_limits<Float64>::lowest();
 
@@ -87,23 +82,10 @@ AUBase::AUBase(AudioComponentInstance inInstance, UInt32 numInputElements, UInt3
 {
 	ResetRenderTime();
 
-	std::call_once(sAUBaseCFStringsInitialized, []() {
-		kUntitledString = CFSTR("Untitled");                     // NOLINT
-		kVersionString = CFSTR(kAUPresetVersionKey);             // NOLINT
-		kTypeString = CFSTR(kAUPresetTypeKey);                   // NOLINT
-		kSubtypeString = CFSTR(kAUPresetSubtypeKey);             // NOLINT
-		kManufacturerString = CFSTR(kAUPresetManufacturerKey);   // NOLINT
-		kDataString = CFSTR(kAUPresetDataKey);                   // NOLINT
-		kNameString = CFSTR(kAUPresetNameKey);                   // NOLINT
-		kRenderQualityString = CFSTR(kAUPresetRenderQualityKey); // NOLINT
-		kElementNameString = CFSTR(kAUPresetElementNameKey);     // NOLINT
-		kPartString = CFSTR(kAUPresetPartKey);                   // NOLINT
-	});
-
 	GlobalScope().Initialize(this, kAudioUnitScope_Global, 1);
 
 	mCurrentPreset.presetNumber = -1;
-	CFRetain(mCurrentPreset.presetName = kUntitledString);
+	CFRetain(mCurrentPreset.presetName = GetPresetDefaultName());
 }
 
 //_____________________________________________________________________________
@@ -382,7 +364,7 @@ OSStatus AUBase::DispatchGetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScop
 	case kAudioUnitProperty_SupportedChannelLayoutTags: {
 		const auto tags = GetChannelLayoutTags(inScope, inElement);
 		AUSDK_Require(!tags.empty(), kAudioUnitErr_InvalidProperty);
-		outDataSize = static_cast<UInt32>(tags.size() * sizeof(AudioChannelLayoutTag));
+		outDataSize = static_cast<UInt32>(std::span(tags).size_bytes());
 		outWritable = false;
 		validateElement = false; // already done it
 		break;
@@ -443,7 +425,7 @@ OSStatus AUBase::DispatchGetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScop
 		outWritable = false;
 		break;
 
-	case 61: // kAudioUnitProperty_LastRenderSampleTime
+	case kAudioUnitProperty_LastRenderSampleTime:
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		outDataSize = sizeof(Float64);
 		outWritable = false;
@@ -481,46 +463,57 @@ OSStatus AUBase::DispatchGetProperty(
 
 	switch (inID) {
 	case kAudioUnitProperty_StreamFormat:
-		*static_cast<AudioStreamBasicDescription*>(outData) = GetStreamFormat(inScope, inElement);
+		Serialize(GetStreamFormat(inScope, inElement), outData);
 		break;
 
 	case kAudioUnitProperty_SampleRate:
-		*static_cast<Float64*>(outData) = GetStreamFormat(inScope, inElement).mSampleRate;
+		Serialize(GetStreamFormat(inScope, inElement).mSampleRate, outData);
 		break;
 
 	case kAudioUnitProperty_ParameterList: {
-		UInt32 nParams = 0;
-		result = GetParameterList(inScope, static_cast<AudioUnitParameterID*>(outData), nParams);
+		UInt32 parameterCount = 0;
+		result = GetParameterList(inScope, nullptr, parameterCount);
+		if (result == noErr) {
+			std::vector<AudioUnitParameterID> parameterIDs(parameterCount);
+			result = GetParameterList(inScope, parameterIDs.data(), parameterCount);
+			if (result == noErr) {
+				Serialize(std::span(parameterIDs), outData);
+			}
+		}
 		break;
 	}
 
-	case kAudioUnitProperty_ParameterInfo:
-		*static_cast<AudioUnitParameterInfo*>(outData) = {};
-		result =
-			GetParameterInfo(inScope, inElement, *static_cast<AudioUnitParameterInfo*>(outData));
+	case kAudioUnitProperty_ParameterInfo: {
+		AudioUnitParameterInfo parameterInfo{};
+		result = GetParameterInfo(inScope, inElement, parameterInfo);
+		Serialize(parameterInfo, outData);
 		break;
+	}
 
 	case kAudioUnitProperty_ParameterHistoryInfo: {
-		auto* const info = static_cast<AudioUnitParameterHistoryInfo*>(outData);
+		AudioUnitParameterHistoryInfo info{};
 		result = GetParameterHistoryInfo(
-			inScope, inElement, info->updatesPerSecond, info->historyDurationInSeconds);
+			inScope, inElement, info.updatesPerSecond, info.historyDurationInSeconds);
+		Serialize(info, outData);
 		break;
 	}
 
 	case kAudioUnitProperty_ClassInfo: {
-		*static_cast<CFPropertyListRef*>(outData) = nullptr;
-		result = SaveState(static_cast<CFPropertyListRef*>(outData));
+		CFPropertyListRef plist = nullptr;
+		result = SaveState(&plist);
+		Serialize(plist, outData);
 		break;
 	}
 
 	case kAudioUnitProperty_FactoryPresets: {
-		*static_cast<CFArrayRef*>(outData) = nullptr;
-		result = GetPresets(static_cast<CFArrayRef*>(outData));
+		CFArrayRef array = nullptr;
+		result = GetPresets(&array);
+		Serialize(array, outData);
 		break;
 	}
 
 	case kAudioUnitProperty_PresentPreset: {
-		*static_cast<AUPreset*>(outData) = mCurrentPreset;
+		Serialize(mCurrentPreset, outData);
 
 		// retain current string (as client owns a reference to it and will release it)
 		if ((inID == kAudioUnitProperty_PresentPreset) && (mCurrentPreset.presetName != nullptr)) {
@@ -536,37 +529,37 @@ OSStatus AUBase::DispatchGetProperty(
 		const CFStringRef name = *element->GetName();
 		AUSDK_Require(name != nullptr, kAudioUnitErr_PropertyNotInUse);
 		CFRetain(name); // must return a +1 reference
-		*static_cast<CFStringRef*>(outData) = name;
+		Serialize(name, outData);
 		break;
 	}
 
 	case kAudioUnitProperty_ElementCount:
-		*static_cast<UInt32*>(outData) = GetScope(inScope).GetNumberOfElements();
+		Serialize(GetScope(inScope).GetNumberOfElements(), outData);
 		break;
 
 	case kAudioUnitProperty_Latency:
-		*static_cast<Float64*>(outData) = GetLatency();
+		Serialize(GetLatency(), outData);
 		break;
 
 	case kAudioUnitProperty_TailTime:
 		AUSDK_Require(SupportsTail(), kAudioUnitErr_InvalidProperty);
-		*static_cast<Float64*>(outData) = GetTailTime();
+		Serialize(GetTailTime(), outData);
 		break;
 
 	case kAudioUnitProperty_MaximumFramesPerSlice:
-		*static_cast<UInt32*>(outData) = mMaxFramesPerSlice;
+		Serialize(mMaxFramesPerSlice, outData);
 		break;
 
 	case kAudioUnitProperty_LastRenderError:
-		*static_cast<OSStatus*>(outData) = mLastRenderError;
+		Serialize(mLastRenderError, outData);
 		mLastRenderError = 0;
 		break;
 
 	case kAudioUnitProperty_SupportedNumChannels: {
-		const AUChannelInfo* infoPtr = nullptr;
-		const UInt32 num = SupportedNumChannels(&infoPtr);
-		if (num != 0 && infoPtr != nullptr) {
-			memcpy(outData, infoPtr, num * sizeof(AUChannelInfo));
+		const AUChannelInfo* infos = nullptr;
+		const auto count = SupportedNumChannels(&infos);
+		if ((count > 0) && (infos != nullptr)) {
+			Serialize(std::span(infos, count), outData);
 		}
 		break;
 	}
@@ -574,64 +567,64 @@ OSStatus AUBase::DispatchGetProperty(
 	case kAudioUnitProperty_SupportedChannelLayoutTags: {
 		const auto tags = GetChannelLayoutTags(inScope, inElement);
 		AUSDK_Require(!tags.empty(), kAudioUnitErr_InvalidProperty);
-		AudioChannelLayoutTag* const ptr =
-			outData != nullptr ? static_cast<AudioChannelLayoutTag*>(outData) : nullptr;
-		if (ptr != nullptr) {
-			memcpy(ptr, tags.data(), tags.size() * sizeof(AudioChannelLayoutTag));
-		}
+		Serialize(std::span(tags), outData);
 		break;
 	}
 
 	case kAudioUnitProperty_AudioChannelLayout: {
-		AudioChannelLayout* const ptr =
-			outData != nullptr ? static_cast<AudioChannelLayout*>(outData) : nullptr;
+		auto* const acl = static_cast<AudioChannelLayout*>(outData);
 		bool writable = false;
-		const UInt32 dataSize = GetAudioChannelLayout(inScope, inElement, ptr, writable);
+		const auto dataSize = GetAudioChannelLayout(inScope, inElement, acl, writable);
 		AUSDK_Require(dataSize != 0, kAudioUnitErr_InvalidProperty);
 		break;
 	}
 
 	case kAudioUnitProperty_ShouldAllocateBuffer: {
 		const auto& element = IOElement(inScope, inElement);
-		*static_cast<UInt32*>(outData) = static_cast<UInt32>(element.WillAllocateBuffer());
+		Serialize(static_cast<UInt32>(element.WillAllocateBuffer()), outData);
 		break;
 	}
 
-	case kAudioUnitProperty_ParameterValueStrings:
-		result = GetParameterValueStrings(inScope, inElement, static_cast<CFArrayRef*>(outData));
+	case kAudioUnitProperty_ParameterValueStrings: {
+		CFArrayRef array = nullptr;
+		result = GetParameterValueStrings(inScope, inElement, &array);
+		Serialize(array, outData);
 		break;
+	}
 
 	case kAudioUnitProperty_HostCallbacks:
-		memcpy(outData, &mHostCallbackInfo, sizeof(mHostCallbackInfo));
+		Serialize(mHostCallbackInfo, outData);
 		break;
 
-	case kAudioUnitProperty_ContextName:
-		if (const CFStringRef name = *mContextName) {
+	case kAudioUnitProperty_ContextName: {
+		const auto* const name = *mContextName;
+		Serialize(name, outData);
+		if (name) {
 			CFRetain(name); // must return a +1 reference
-			*static_cast<CFStringRef*>(outData) = name;
 			result = noErr;
 		} else {
-			*static_cast<CFStringRef*>(outData) = nullptr;
 			result = kAudioUnitErr_PropertyNotInUse;
 		}
 		break;
+	}
 
 #if AUSDK_HAVE_UI && !TARGET_OS_IPHONE
 	case kAudioUnitProperty_IconLocation: {
-		const CFURLRef iconLocation = CopyIconLocation();
+		const auto iconLocation = CopyIconLocation();
 		AUSDK_Require(iconLocation != nullptr, kAudioUnitErr_InvalidProperty);
-		*static_cast<CFURLRef*>(outData) = iconLocation;
+		Serialize(iconLocation, outData);
 		break;
 	}
 #endif
 
 	case kAudioUnitProperty_ParameterClumpName: {
-		auto* const ioClumpInfo = static_cast<AudioUnitParameterNameInfo*>(outData);
-		AUSDK_Require(ioClumpInfo->inID != kAudioUnitClumpID_System,
+		auto clumpInfo = Deserialize<AudioUnitParameterNameInfo>(outData);
+		AUSDK_Require(clumpInfo.inID != kAudioUnitClumpID_System,
 			kAudioUnitErr_InvalidPropertyValue); // this ID value is reserved
-		result = CopyClumpName(inScope, ioClumpInfo->inID,
-			static_cast<UInt32>(std::max(ioClumpInfo->inDesiredLength, SInt32(0))),
-			&ioClumpInfo->outName);
+		result = CopyClumpName(inScope, clumpInfo.inID,
+			static_cast<UInt32>(std::max(clumpInfo.inDesiredLength, SInt32(0))),
+			&clumpInfo.outName);
+		Serialize(clumpInfo, outData);
 
 		// this is provided for compatbility with existing implementations that don't know
 		// about this new mechanism
@@ -641,19 +634,19 @@ OSStatus AUBase::DispatchGetProperty(
 		break;
 	}
 
-	case 61: // kAudioUnitProperty_LastRenderSampleTime
-		*static_cast<Float64*>(outData) = mCurrentRenderTime.mSampleTime;
+	case kAudioUnitProperty_LastRenderSampleTime:
+		Serialize(mCurrentRenderTime.mSampleTime, outData);
 		break;
 
-	case kAudioUnitProperty_NickName:
+	case kAudioUnitProperty_NickName: {
+		const auto* const name = *mNickName;
+		Serialize(name, outData);
 		// Ownership follows Core Foundation's 'Copy Rule'
-		if (const auto* const name = *mNickName) {
+		if (name) {
 			CFRetain(name);
-			*static_cast<CFStringRef*>(outData) = name;
-		} else {
-			*static_cast<CFStringRef*>(outData) = nullptr;
 		}
 		break;
+	}
 
 	default:
 		result = GetProperty(inID, inScope, inElement, outData);
@@ -676,7 +669,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	case kAudioUnitProperty_MakeConnection: {
 		AUSDK_Require(
 			inDataSize >= sizeof(AudioUnitConnection), kAudioUnitErr_InvalidPropertyValue);
-		const auto& connection = *static_cast<const AudioUnitConnection*>(inData);
+		const auto connection = Deserialize<AudioUnitConnection>(inData);
 		result = SetConnection(connection);
 		break;
 	}
@@ -684,7 +677,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	case kAudioUnitProperty_SetRenderCallback: {
 		AUSDK_Require(
 			inDataSize >= sizeof(AURenderCallbackStruct), kAudioUnitErr_InvalidPropertyValue);
-		const auto& callback = *static_cast<const AURenderCallbackStruct*>(inData);
+		const auto callback = Deserialize<AURenderCallbackStruct>(inData);
 		result = SetInputCallback(kAudioUnitProperty_SetRenderCallback, inElement,
 			callback.inputProc, callback.inputProcRefCon);
 		break;
@@ -693,7 +686,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	case kAudioUnitProperty_ElementCount:
 		AUSDK_Require(inDataSize == sizeof(UInt32), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(BusCountWritable(inScope), kAudioUnitErr_PropertyNotWritable);
-		result = SetBusCount(inScope, *static_cast<const UInt32*>(inData));
+		result = SetBusCount(inScope, Deserialize<UInt32>(inData));
 		if (result == noErr) {
 			PropertyChanged(inID, inScope, inElement);
 		}
@@ -702,7 +695,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	case kAudioUnitProperty_MaximumFramesPerSlice:
 		AUSDK_Require(inDataSize == sizeof(UInt32), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require_noerr(CanSetMaxFrames());
-		SetMaxFramesPerSlice(*static_cast<const UInt32*>(inData));
+		SetMaxFramesPerSlice(Deserialize<UInt32>(inData));
 		break;
 
 	case kAudioUnitProperty_StreamFormat: {
@@ -710,7 +703,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 		AUSDK_Require(inDataSize >= kMinimumValidASBDSize, kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(GetElement(inScope, inElement) != nullptr, kAudioUnitErr_InvalidElement);
 
-		AudioStreamBasicDescription newDesc = {};
+		AudioStreamBasicDescription newDesc{};
 		// now we're going to be ultra conservative! because of discrepancies between
 		// sizes of this struct based on aligment padding inconsistencies
 		memcpy(&newDesc, inData, kMinimumValidASBDSize);
@@ -719,7 +712,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 
 		AUSDK_Require(ValidFormat(inScope, inElement, newDesc), kAudioUnitErr_FormatNotSupported);
 
-		const AudioStreamBasicDescription curDesc = GetStreamFormat(inScope, inElement);
+		const auto curDesc = GetStreamFormat(inScope, inElement);
 
 		if (!ASBD::IsEqual(curDesc, newDesc)) {
 			AUSDK_Require(
@@ -733,9 +726,9 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 		AUSDK_Require(inDataSize == sizeof(Float64), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(GetElement(inScope, inElement) != nullptr, kAudioUnitErr_InvalidElement);
 
-		const AudioStreamBasicDescription curDesc = GetStreamFormat(inScope, inElement);
+		const auto curDesc = GetStreamFormat(inScope, inElement);
 		AudioStreamBasicDescription newDesc = curDesc;
-		newDesc.mSampleRate = *static_cast<const Float64*>(inData);
+		newDesc.mSampleRate = Deserialize<Float64>(inData);
 
 		AUSDK_Require(ValidFormat(inScope, inElement, newDesc), kAudioUnitErr_FormatNotSupported);
 
@@ -748,19 +741,26 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	}
 
 	case kAudioUnitProperty_AudioChannelLayout: {
-		const auto& layout = *static_cast<const AudioChannelLayout*>(inData);
-
-		// Check the variable-size AudioChannelLayout object size
-		constexpr size_t kHeaderSize = offsetof(AudioChannelLayout, mChannelDescriptions);
+		// Check the variable-size AudioChannelLayout object size:
 		// - Is the memory area big enough so that AudioChannelLayout::mNumberChannelDescriptions
 		// can be read?
-		AUSDK_Require(inDataSize >= kHeaderSize, kAudioUnitErr_InvalidPropertyValue);
+		AUSDK_Require(
+			inDataSize >= AUChannelLayout::DataByteSize(0), kAudioUnitErr_InvalidPropertyValue);
 		// - Is the whole size consistent?
-		AUSDK_Require(inDataSize >= kHeaderSize + layout.mNumberChannelDescriptions *
-													  sizeof(AudioChannelDescription),
+		using NumberChannelDescriptionsT = decltype(AudioChannelLayout::mNumberChannelDescriptions);
+		constexpr auto numberChannelDescriptionsOffset =
+			offsetof(AudioChannelLayout, mNumberChannelDescriptions);
+		const auto numberChannelDescriptions = Deserialize<NumberChannelDescriptionsT>(
+			static_cast<const std::byte*>(inData) + numberChannelDescriptionsOffset);
+		AUSDK_Require(inDataSize >= AUChannelLayout::DataByteSize(numberChannelDescriptions),
 			kAudioUnitErr_InvalidPropertyValue);
 
-		result = SetAudioChannelLayout(inScope, inElement, &layout);
+		// copy incoming data to storage aligned for the object type
+		const size_t padding = ((inDataSize % sizeof(AudioChannelLayout)) > 0) ? 1 : 0;
+		std::vector<AudioChannelLayout> layout((inDataSize / sizeof(AudioChannelLayout)) + padding);
+		std::memcpy(layout.data(), inData, inDataSize);
+
+		result = SetAudioChannelLayout(inScope, inElement, layout.data());
 		if (result == noErr) {
 			PropertyChanged(inID, inScope, inElement);
 		}
@@ -768,15 +768,15 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 	}
 
 	case kAudioUnitProperty_ClassInfo:
-		AUSDK_Require(inDataSize == sizeof(CFPropertyListRef*), kAudioUnitErr_InvalidPropertyValue);
+		AUSDK_Require(inDataSize == sizeof(CFPropertyListRef), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		result = RestoreState(*static_cast<const CFPropertyListRef*>(inData));
+		result = RestoreState(Deserialize<CFPropertyListRef>(inData));
 		break;
 
 	case kAudioUnitProperty_PresentPreset: {
 		AUSDK_Require(inDataSize == sizeof(AUPreset), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		const auto& newPreset = *static_cast<const AUPreset*>(inData);
+		const auto newPreset = Deserialize<AUPreset>(inData);
 
 		if (newPreset.presetNumber >= 0) {
 			result = NewFactoryPresetSet(newPreset);
@@ -800,8 +800,7 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 		AUSDK_Require(GetElement(inScope, inElement) != nullptr, kAudioUnitErr_InvalidElement);
 		AUSDK_Require(inDataSize == sizeof(CFStringRef), kAudioUnitErr_InvalidPropertyValue);
 		const auto element = GetScope(inScope).GetElement(inElement);
-		const CFStringRef inStr = *static_cast<const CFStringRef*>(inData);
-		element->SetName(inStr);
+		element->SetName(Deserialize<CFStringRef>(inData));
 		PropertyChanged(inID, inScope, inElement);
 		break;
 	}
@@ -814,15 +813,14 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 		AUSDK_Require(!IsInitialized(), kAudioUnitErr_Initialized);
 
 		auto& element = IOElement(inScope, inElement);
-		element.SetWillAllocateBuffer(*static_cast<const UInt32*>(inData) != 0);
+		element.SetWillAllocateBuffer(Deserialize<UInt32>(inData) != 0);
 		break;
 	}
 
 	case kAudioUnitProperty_HostCallbacks: {
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		const UInt32 availSize =
-			std::min(inDataSize, static_cast<UInt32>(sizeof(HostCallbackInfo)));
-		const bool hasChanged = memcmp(&mHostCallbackInfo, inData, availSize) == 0;
+		const auto availSize = std::min(static_cast<size_t>(inDataSize), sizeof(HostCallbackInfo));
+		const bool hasChanged = memcmp(&mHostCallbackInfo, inData, availSize) != 0;
 		mHostCallbackInfo = {};
 		memcpy(&mHostCallbackInfo, inData, availSize);
 		if (hasChanged) {
@@ -831,24 +829,19 @@ OSStatus AUBase::DispatchSetProperty(AudioUnitPropertyID inID, AudioUnitScope in
 		break;
 	}
 
-	case kAudioUnitProperty_ContextName: {
+	case kAudioUnitProperty_ContextName:
 		AUSDK_Require(inDataSize == sizeof(CFStringRef), kAudioUnitErr_InvalidPropertyValue);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		const CFStringRef inStr = *static_cast<const CFStringRef*>(inData);
-		mContextName = inStr;
+		mContextName = Deserialize<CFStringRef>(inData);
 		PropertyChanged(inID, inScope, inElement);
 		break;
-	}
 
-
-	case kAudioUnitProperty_NickName: {
+	case kAudioUnitProperty_NickName:
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inDataSize == sizeof(CFStringRef), kAudioUnitErr_InvalidPropertyValue);
-		const CFStringRef inStr = *static_cast<const CFStringRef*>(inData);
-		mNickName = inStr;
+		mNickName = Deserialize<CFStringRef>(inData);
 		PropertyChanged(inID, inScope, inElement);
 		break;
-	}
 
 	default:
 		result = SetProperty(inID, inScope, inElement, inData, inDataSize);
@@ -878,15 +871,8 @@ OSStatus AUBase::DispatchRemovePropertyValue(
 
 	case kAudioUnitProperty_HostCallbacks: {
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		bool hasValue = false;
-		const void* const ptr = &mHostCallbackInfo;
-		for (size_t i = 0; i < sizeof(HostCallbackInfo); ++i) {
-			if (static_cast<const char*>(ptr)[i] != 0) { // NOLINT
-				hasValue = true;
-				break;
-			}
-		}
-		if (hasValue) {
+		constexpr decltype(mHostCallbackInfo) zeroInfo{};
+		if (memcmp(&mHostCallbackInfo, &zeroInfo, sizeof(mHostCallbackInfo)) != 0) {
 			mHostCallbackInfo = {};
 			PropertyChanged(inID, inScope, inElement);
 		}
@@ -1058,19 +1044,15 @@ OSStatus AUBase::ScheduleParameter(
 constexpr bool ParameterEventListSortPredicate(
 	const AudioUnitParameterEvent& ev1, const AudioUnitParameterEvent& ev2) noexcept
 {
-	// ramp.startBufferOffset is signed
-	const SInt32 offset1 =
-		ev1.eventType == kParameterEvent_Immediate
-			? static_cast<SInt32>(ev1.eventValues.immediate.bufferOffset) // NOLINT union
-			: ev1.eventValues.ramp.startBufferOffset;                     // NOLINT union
-	const SInt32 offset2 =
-		ev2.eventType == kParameterEvent_Immediate
-			? static_cast<SInt32>(ev2.eventValues.immediate.bufferOffset) // NOLINT union
-			: ev2.eventValues.ramp.startBufferOffset;                     // NOLINT union
+	constexpr auto bufferOffset = [](const AudioUnitParameterEvent& event) {
+		// ramp.startBufferOffset is signed
+		return (event.eventType == kParameterEvent_Immediate)
+				   ? static_cast<SInt32>(event.eventValues.immediate.bufferOffset) // NOLINT union
+				   : event.eventValues.ramp.startBufferOffset;                     // NOLINT union
+	};
 
-	return offset1 < offset2;
+	return bufferOffset(ev1) < bufferOffset(ev2);
 }
-
 
 // ____________________________________________________________________________
 //
@@ -1085,7 +1067,7 @@ OSStatus AUBase::ProcessForScheduledParams(
 
 
 	// sort the ParameterEventList by startBufferOffset
-	std::sort(inParamList.begin(), inParamList.end(), ParameterEventListSortPredicate);
+	std::ranges::sort(inParamList, ParameterEventListSortPredicate);
 
 	while (framesRemaining > 0) {
 		// first of all, go through the ramped automation events and find out where the next
@@ -1291,10 +1273,9 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 			}
 		}
 
-		// The vector's being emptied
-		// because these events should only apply to this Render cycle, so anything
-		// left over is from a preceding cycle and should be dumped.  New scheduled
-		// parameters must be scheduled from the next pre-render callback.
+		// The vector is being emptied because these events should only apply to this Render cycle,
+		// so anything left over is from a preceding cycle and should be dumped.
+		// New scheduled parameters must be scheduled from the next pre-render callback.
 		if (!mParamEventList.empty()) {
 			mParamEventList.clear();
 		}
@@ -1668,19 +1649,19 @@ std::vector<AudioChannelLayoutTag> AUBase::GetChannelLayoutTags(
 	return IOElement(inScope, inElement).GetChannelLayoutTags();
 }
 
-UInt32 AUBase::GetAudioChannelLayout(AudioUnitScope scope, AudioUnitElement element,
+UInt32 AUBase::GetAudioChannelLayout(AudioUnitScope inScope, AudioUnitElement inElement,
 	AudioChannelLayout* outLayoutPtr, bool& outWritable)
 {
-	auto& el = IOElement(scope, element);
-	return el.GetAudioChannelLayout(outLayoutPtr, outWritable);
+	auto& element = IOElement(inScope, inElement);
+	return element.GetAudioChannelLayout(outLayoutPtr, outWritable);
 }
 
 OSStatus AUBase::RemoveAudioChannelLayout(AudioUnitScope inScope, AudioUnitElement inElement)
 {
-	auto& el = IOElement(inScope, inElement);
+	auto& element = IOElement(inScope, inElement);
 	bool writable = false;
-	if (el.GetAudioChannelLayout(nullptr, writable) > 0) {
-		return el.RemoveAudioChannelLayout();
+	if (element.GetAudioChannelLayout(nullptr, writable) > 0) {
+		return element.RemoveAudioChannelLayout();
 	}
 	return noErr;
 }
@@ -1688,24 +1669,22 @@ OSStatus AUBase::RemoveAudioChannelLayout(AudioUnitScope inScope, AudioUnitEleme
 OSStatus AUBase::SetAudioChannelLayout(
 	AudioUnitScope inScope, AudioUnitElement inElement, const AudioChannelLayout* inLayout)
 {
-	auto& ioEl = IOElement(inScope, inElement);
+	auto& element = IOElement(inScope, inElement);
 
 	// the num channels of the layout HAS TO MATCH the current channels of the Element's stream
 	// format
-	const UInt32 currentChannels = ioEl.GetStreamFormat().mChannelsPerFrame;
+	const UInt32 currentChannels = element.GetStreamFormat().mChannelsPerFrame;
 	const UInt32 numChannelsInLayout = AUChannelLayout::NumberChannels(*inLayout);
 	AUSDK_Require(currentChannels == numChannelsInLayout, kAudioUnitErr_InvalidPropertyValue);
 
 	const auto tags = GetChannelLayoutTags(inScope, inElement);
 	AUSDK_Require(!tags.empty(), kAudioUnitErr_InvalidProperty);
-	const auto inTag = inLayout->mChannelLayoutTag;
-	const auto iter = std::find_if(tags.begin(), tags.end(), [&inTag](auto& tag) {
+	const auto iter = std::ranges::find_if(tags, [inTag = inLayout->mChannelLayoutTag](auto tag) {
 		return tag == inTag || tag == kAudioChannelLayoutTag_UseChannelDescriptions;
 	});
-
 	AUSDK_Require(iter != tags.end(), kAudioUnitErr_InvalidPropertyValue);
 
-	return ioEl.SetAudioChannelLayout(*inLayout);
+	return element.SetAudioChannelLayout(*inLayout);
 }
 
 constexpr int kCurrentSavedStateVersion = 0;
@@ -1727,17 +1706,17 @@ OSStatus AUBase::SaveState(CFPropertyListRef* outData)
 
 	// first step -> save the version to the data ref
 	SInt32 value = kCurrentSavedStateVersion;
-	AddNumToDictionary(*dict, kVersionString, value);
+	AddNumToDictionary(*dict, CFSTR(kAUPresetVersionKey), value);
 
 	// second step -> save the component type, subtype, manu to the data ref
 	value = static_cast<SInt32>(desc.componentType);
-	AddNumToDictionary(*dict, kTypeString, value);
+	AddNumToDictionary(*dict, CFSTR(kAUPresetTypeKey), value);
 
 	value = static_cast<SInt32>(desc.componentSubType);
-	AddNumToDictionary(*dict, kSubtypeString, value);
+	AddNumToDictionary(*dict, CFSTR(kAUPresetSubtypeKey), value);
 
 	value = static_cast<SInt32>(desc.componentManufacturer);
-	AddNumToDictionary(*dict, kManufacturerString, value);
+	AddNumToDictionary(*dict, CFSTR(kAUPresetManufacturerKey), value);
 
 	// fourth step -> save the state of all parameters on all scopes and elements
 	auto data = Owned<CFMutableDataRef>::from_create(CFDataCreateMutable(nullptr, 0));
@@ -1749,19 +1728,19 @@ OSStatus AUBase::SaveState(CFPropertyListRef* outData)
 	SaveExtendedScopes(*data);
 
 	// save all this in the data section of the dictionary
-	CFDictionarySetValue(*dict, kDataString, *data);
+	CFDictionarySetValue(*dict, CFSTR(kAUPresetDataKey), *data);
 	data = nullptr; // data can be large-ish, so destroy it now.
 
 	// OK - now we're going to do some properties
 	// save the preset name...
-	CFDictionarySetValue(*dict, kNameString, mCurrentPreset.presetName);
+	CFDictionarySetValue(*dict, CFSTR(kAUPresetNameKey), mCurrentPreset.presetName);
 
 	// Does the unit support the RenderQuality property - if so, save it...
 	OSStatus result =
 		DispatchGetProperty(kAudioUnitProperty_RenderQuality, kAudioUnitScope_Global, 0, &value);
 
 	if (result == noErr) {
-		AddNumToDictionary(*dict, kRenderQualityString, value);
+		AddNumToDictionary(*dict, CFSTR(kAUPresetRenderQualityKey), value);
 	}
 
 	// Do we have any element names for any of our scopes?
@@ -1781,7 +1760,7 @@ OSStatus AUBase::SaveState(CFPropertyListRef* outData)
 			GetScope(i).AddElementNamesToDict(*nameDict);
 		}
 
-		CFDictionarySetValue(*dict, kElementNameString, *nameDict);
+		CFDictionarySetValue(*dict, CFSTR(kAUPresetElementNameKey), *nameDict);
 	}
 
 	// we're done!!!
@@ -1804,51 +1783,55 @@ OSStatus AUBase::RestoreState(CFPropertyListRef plist)
 
 	// zeroeth step - make sure the Part key is NOT present, as this method is used
 	// to restore the GLOBAL state of the dictionary
-	AUSDK_Require(!CFDictionaryContainsKey(dict, kPartString), kAudioUnitErr_InvalidPropertyValue);
+	AUSDK_Require(!CFDictionaryContainsKey(dict, CFSTR(kAUPresetPartKey)),
+		kAudioUnitErr_InvalidPropertyValue);
 
 	// first step -> check the saved version in the data ref
 	// at this point we're only dealing with version==0
-	const auto* cfnum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, kVersionString));
-	AUSDK_Require(cfnum != nullptr, kAudioUnitErr_InvalidPropertyValue);
-	AUSDK_Require(CFGetTypeID(cfnum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
+	const auto* cfNum =
+		static_cast<CFNumberRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetVersionKey)));
+	AUSDK_Require(cfNum != nullptr, kAudioUnitErr_InvalidPropertyValue);
+	AUSDK_Require(CFGetTypeID(cfNum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
 	SInt32 value = 0;
-	CFNumberGetValue(cfnum, kCFNumberSInt32Type, &value);
+	CFNumberGetValue(cfNum, kCFNumberSInt32Type, &value);
 	AUSDK_Require(value == kCurrentSavedStateVersion, kAudioUnitErr_InvalidPropertyValue);
 
 	// second step -> check that this data belongs to this kind of audio unit
 	// by checking the component subtype and manuID
 	// We're not checking the type, since there may be different versions (effect, format-converter,
 	// offline) of essentially the same AU
-	cfnum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, kSubtypeString));
-	AUSDK_Require(cfnum != nullptr, kAudioUnitErr_InvalidPropertyValue);
-	AUSDK_Require(CFGetTypeID(cfnum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
-	CFNumberGetValue(cfnum, kCFNumberSInt32Type, &value);
+	cfNum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetSubtypeKey)));
+	AUSDK_Require(cfNum != nullptr, kAudioUnitErr_InvalidPropertyValue);
+	AUSDK_Require(CFGetTypeID(cfNum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
+	CFNumberGetValue(cfNum, kCFNumberSInt32Type, &value);
 	AUSDK_Require(
 		static_cast<UInt32>(value) == desc.componentSubType, kAudioUnitErr_InvalidPropertyValue);
 
-	cfnum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, kManufacturerString));
-	AUSDK_Require(cfnum != nullptr, kAudioUnitErr_InvalidPropertyValue);
-	AUSDK_Require(CFGetTypeID(cfnum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
-	CFNumberGetValue(cfnum, kCFNumberSInt32Type, &value);
+	cfNum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetManufacturerKey)));
+	AUSDK_Require(cfNum != nullptr, kAudioUnitErr_InvalidPropertyValue);
+	AUSDK_Require(CFGetTypeID(cfNum) == CFNumberGetTypeID(), kAudioUnitErr_InvalidPropertyValue);
+	CFNumberGetValue(cfNum, kCFNumberSInt32Type, &value);
 	AUSDK_Require(static_cast<UInt32>(value) == desc.componentManufacturer,
 		kAudioUnitErr_InvalidPropertyValue);
 
 	// fourth step -> restore the state of all of the parameters for each scope and element
-	const auto* const data = static_cast<CFDataRef>(CFDictionaryGetValue(dict, kDataString));
+	const auto* const data =
+		static_cast<CFDataRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetDataKey)));
 	if ((data != nullptr) && (CFGetTypeID(data) == CFDataGetTypeID())) {
 		const UInt8* p = CFDataGetBytePtr(data);
 		const UInt8* const pend = p + CFDataGetLength(data); // NOLINT
 
 		while (p < pend) {
-			const auto scopeIdx = ExtractBigUInt32AndAdvance(p);
-			const auto& scope = GetScope(scopeIdx);
+			const auto scopeIndex = DeserializeBigUInt32AndAdvance(p);
+			const auto& scope = GetScope(scopeIndex);
 			p = scope.RestoreState(p);
 		}
 	}
 
 	// OK - now we're going to do some properties
 	// restore the preset name...
-	const auto* const name = static_cast<CFStringRef>(CFDictionaryGetValue(dict, kNameString));
+	const auto* const name =
+		static_cast<CFStringRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetNameKey)));
 	if (mCurrentPreset.presetName != nullptr) {
 		CFRelease(mCurrentPreset.presetName);
 	}
@@ -1856,7 +1839,7 @@ OSStatus AUBase::RestoreState(CFPropertyListRef plist)
 		mCurrentPreset.presetName = name;
 		mCurrentPreset.presetNumber = -1;
 	} else { // no name entry make the default one
-		mCurrentPreset.presetName = kUntitledString;
+		mCurrentPreset.presetName = GetPresetDefaultName();
 		mCurrentPreset.presetNumber = -1;
 	}
 
@@ -1864,16 +1847,16 @@ OSStatus AUBase::RestoreState(CFPropertyListRef plist)
 	PropertyChanged(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
 
 	// Does the dict contain render quality information?
-	cfnum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, kRenderQualityString));
-	if (cfnum && (CFGetTypeID(cfnum) == CFNumberGetTypeID())) {
-		CFNumberGetValue(cfnum, kCFNumberSInt32Type, &value);
+	cfNum = static_cast<CFNumberRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetRenderQualityKey)));
+	if (cfNum && (CFGetTypeID(cfNum) == CFNumberGetTypeID())) {
+		CFNumberGetValue(cfNum, kCFNumberSInt32Type, &value);
 		DispatchSetProperty(
 			kAudioUnitProperty_RenderQuality, kAudioUnitScope_Global, 0, &value, sizeof(value));
 	}
 
 	// Do we have any element names for any of our scopes?
 	const auto nameDict =
-		static_cast<CFDictionaryRef>(CFDictionaryGetValue(dict, kElementNameString));
+		static_cast<CFDictionaryRef>(CFDictionaryGetValue(dict, CFSTR(kAUPresetElementNameKey)));
 	if (nameDict && (CFGetTypeID(nameDict) == CFDictionaryGetTypeID())) {
 		for (AudioUnitScope i = 0; i < kNumScopes; ++i) {
 			const CFStringRef key = CFStringCreateWithFormat(

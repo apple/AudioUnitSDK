@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUUtility.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUUtility_h
 #define AudioUnitSDK_AUUtility_h
@@ -18,14 +18,16 @@
 
 // std
 #include <bitset>
-#include <concepts>
-#include <cstddef>
+#include <climits>
 #include <cstring>
+#include <memory>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 // -------------------------------------------------------------------------------------------------
@@ -266,7 +268,7 @@ constexpr bool operator==(const AudioChannelLayout& lhs, const AudioChannelLayou
 		if (lhs.mNumberChannelDescriptions != rhs.mNumberChannelDescriptions) {
 			return false;
 		}
-		for (auto i = 0u; i < lhs.mNumberChannelDescriptions; ++i) {
+		for (UInt32 i = 0; i < lhs.mNumberChannelDescriptions; ++i) {
 			const auto& lhdesc = lhs.mChannelDescriptions[i]; // NOLINT array subscript
 			const auto& rhdesc = rhs.mChannelDescriptions[i]; // NOLINT array subscript
 
@@ -297,21 +299,32 @@ public:
 
 	AUChannelLayout(uint32_t inNumberChannelDescriptions, AudioChannelLayoutTag inChannelLayoutTag,
 		AudioChannelBitmap inChannelBitMap)
-		: mStorage(
-			  kHeaderSize + (inNumberChannelDescriptions * sizeof(AudioChannelDescription)), {})
+		: mStorage(ObjectCountForByteSize(DataByteSize(inNumberChannelDescriptions)))
 	{
-		auto* const acl = reinterpret_cast<AudioChannelLayout*>(mStorage.data()); // NOLINT
-
-		acl->mChannelLayoutTag = inChannelLayoutTag;
-		acl->mChannelBitmap = inChannelBitMap;
-		acl->mNumberChannelDescriptions = inNumberChannelDescriptions;
+		auto& acl = mStorage.front();
+		acl.mChannelLayoutTag = inChannelLayoutTag;
+		acl.mChannelBitmap = inChannelBitMap;
+		acl.mNumberChannelDescriptions = inNumberChannelDescriptions;
 	}
 
 	/// Implicit conversion from AudioChannelLayout& is allowed.
 	AUChannelLayout(const AudioChannelLayout& acl) // NOLINT
-		: mStorage(kHeaderSize + (acl.mNumberChannelDescriptions * sizeof(AudioChannelDescription)))
+		: mStorage(ObjectCountForByteSize(DataByteSize(acl.mNumberChannelDescriptions)))
 	{
-		memcpy(mStorage.data(), &acl, mStorage.size());
+		std::memcpy(mStorage.data(), &acl, DataByteSize(acl.mNumberChannelDescriptions));
+	}
+
+	~AUChannelLayout() noexcept = default;
+	AUChannelLayout(AUChannelLayout&&) noexcept = default;
+	AUChannelLayout& operator=(AUChannelLayout&&) noexcept = default;
+
+	// copy overloads required because AudioChannelLayout deletes them
+	AUChannelLayout(const AUChannelLayout& other) { CopyStorage(other); }
+
+	AUChannelLayout& operator=(const AUChannelLayout& other)
+	{
+		CopyStorage(other);
+		return *this;
 	}
 
 	bool operator==(const AUChannelLayout& other) const noexcept
@@ -319,24 +332,24 @@ public:
 		return ACL::operator==(Layout(), other.Layout());
 	}
 
-	bool operator!=(const AUChannelLayout& y) const noexcept { return !(*this == y); }
+	bool operator!=(const AUChannelLayout& other) const noexcept { return !(*this == other); }
 
 	[[nodiscard]] bool IsValid() const noexcept { return NumberChannels() > 0; }
 
-	[[nodiscard]] const AudioChannelLayout& Layout() const noexcept { return *LayoutPtr(); }
+	[[nodiscard]] const AudioChannelLayout& Layout() const noexcept { return mStorage.front(); }
 
-	[[nodiscard]] const AudioChannelLayout* LayoutPtr() const noexcept
-	{
-		return reinterpret_cast<const AudioChannelLayout*>(mStorage.data()); // NOLINT
-	}
+	[[nodiscard]] const AudioChannelLayout* LayoutPtr() const noexcept { return mStorage.data(); }
 
 	/// After default construction, this method will return
 	/// kAudioChannelLayoutTag_UseChannelDescriptions with 0 channel descriptions.
 	[[nodiscard]] AudioChannelLayoutTag Tag() const noexcept { return Layout().mChannelLayoutTag; }
 
-	[[nodiscard]] uint32_t NumberChannels() const noexcept { return NumberChannels(*LayoutPtr()); }
+	[[nodiscard]] uint32_t NumberChannels() const noexcept { return NumberChannels(Layout()); }
 
-	[[nodiscard]] uint32_t Size() const noexcept { return static_cast<uint32_t>(mStorage.size()); }
+	[[nodiscard]] uint32_t Size() const noexcept
+	{
+		return static_cast<uint32_t>(DataByteSize(Layout().mNumberChannelDescriptions));
+	}
 
 	static uint32_t NumberChannels(const AudioChannelLayout& inLayout) noexcept
 	{
@@ -344,15 +357,36 @@ public:
 			return inLayout.mNumberChannelDescriptions;
 		}
 		if (inLayout.mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelBitmap) {
-			return static_cast<uint32_t>(
-				std::bitset<32>(inLayout.mChannelBitmap).count()); // NOLINT magic #
+			constexpr size_t bitWidth = sizeof(inLayout.mChannelBitmap) * CHAR_BIT;
+			return static_cast<uint32_t>(std::bitset<bitWidth>(inLayout.mChannelBitmap).count());
 		}
 		return AudioChannelLayoutTag_GetNumberOfChannels(inLayout.mChannelLayoutTag);
 	}
 
+	static constexpr size_t DataByteSize(uint32_t inNumberChannelDescriptions) noexcept
+	{
+		constexpr size_t headerSize = offsetof(AudioChannelLayout, mChannelDescriptions);
+		return headerSize + (inNumberChannelDescriptions * sizeof(AudioChannelDescription));
+	}
+
 private:
-	constexpr static size_t kHeaderSize = offsetof(AudioChannelLayout, mChannelDescriptions[0]);
-	std::vector<std::byte> mStorage;
+	// number of contiguous ACL objects required to accommodate a specific storage size
+	static constexpr size_t ObjectCountForByteSize(size_t inDataByteSize) noexcept
+	{
+		const size_t padding = ((inDataByteSize % sizeof(AudioChannelLayout)) > 0) ? 1 : 0;
+		return (inDataByteSize / sizeof(AudioChannelLayout)) + padding;
+	}
+
+	void CopyStorage(const AUChannelLayout& inSource)
+	{
+		mStorage = decltype(mStorage)(inSource.mStorage.size());
+		std::memcpy(
+			mStorage.data(), inSource.mStorage.data(), std::span(inSource.mStorage).size_bytes());
+	}
+
+	// the data representation is not literally an array of these entire objects, however using it
+	// as the underlying storage data type ensures object lifetime and alignment of the data pointer
+	std::vector<AudioChannelLayout> mStorage;
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -416,6 +450,7 @@ inline double Frequency()
 
 /// Basic RAII wrapper for CoreFoundation types
 template <typename T>
+	requires std::is_pointer_v<T>
 class Owned {
 	explicit Owned(T obj, bool fromget) noexcept : mImpl{ obj }
 	{
@@ -492,15 +527,48 @@ private:
 // -------------------------------------------------------------------------------------------------
 #pragma mark -
 
-inline UInt32 ExtractBigUInt32AndAdvance(const UInt8*& ioData)
+template <typename T>
+concept TriviallyCopySerializable = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
+
+// copy object data to arbitrary memory address that may not share object alignment
+void Serialize(const TriviallyCopySerializable auto& inValue, void* outData) noexcept
 {
-	UInt32 value{};
-	memcpy(&value, ioData, sizeof(value));
+	std::memcpy(outData, std::addressof(inValue), sizeof(inValue));
+}
+
+template <TriviallyCopySerializable T, std::size_t Extent>
+void Serialize(std::span<T, Extent> inValues, void* outData) noexcept
+{
+	std::memcpy(outData, inValues.data(), inValues.size_bytes());
+}
+
+// ensure object lifetime and alignment of object data from opaque pointer
+template <TriviallyCopySerializable T>
+	requires std::is_nothrow_default_constructible_v<T> && (!std::is_const_v<T>)
+T Deserialize(const void* inData) noexcept
+{
+	T result{};
+	std::memcpy(std::addressof(result), inData, sizeof(result));
+	return result;
+}
+
+template <TriviallyCopySerializable T>
+	requires std::is_default_constructible_v<T> && (!std::is_const_v<T>)
+std::vector<T> DeserializeArray(const void* inData, size_t inSizeBytes)
+{
+	std::vector<T> result(inSizeBytes / sizeof(T));
+	std::memcpy(result.data(), inData, std::span(result).size_bytes());
+	return result;
+}
+
+inline UInt32 DeserializeBigUInt32AndAdvance(const UInt8*& ioData) noexcept
+{
+	const auto value = Deserialize<UInt32>(ioData);
 	ioData += sizeof(value); // NOLINT
 	return CFSwapInt32BigToHost(value);
 }
 
-inline std::string MakeStringFrom4CC(uint32_t in4CC) noexcept
+inline std::string MakeStringFrom4CC(uint32_t in4CC)
 {
 	in4CC = CFSwapInt32HostToBig(in4CC);
 

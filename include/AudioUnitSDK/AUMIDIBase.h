@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUMIDIBase_h
 #define AudioUnitSDK_AUMIDIBase_h

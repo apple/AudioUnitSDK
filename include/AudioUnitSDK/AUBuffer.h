@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBuffer.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUBuffer_h
 #define AudioUnitSDK_AUBuffer_h
@@ -27,7 +27,7 @@ struct AllocatedBuffer {
 	void* const mBufferData;
 	void* const mReservedC;
 
-	AudioBufferList mAudioBufferList;
+	AudioBufferList mAudioBufferList{};
 	// opaque variable-length data may follow the AudioBufferList
 
 	AudioBufferList& Prepare(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer);

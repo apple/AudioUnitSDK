@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUConfig.h>
 
@@ -71,10 +71,14 @@ OSStatus AUMIDIBase::DelegateGetProperty(
 
 	switch (inID) { // NOLINT if/else?!
 #if AUSDK_HAVE_XML_NAMES
-	case kMusicDeviceProperty_MIDIXMLNames:
+	case kMusicDeviceProperty_MIDIXMLNames: {
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		return GetXMLNames(static_cast<CFURLRef*>(outData));
+		CFURLRef url = nullptr;
+		const auto result = GetXMLNames(&url);
+		Serialize(url, outData);
+		return result;
+	}
 #endif
 
 #if AUSDK_HAVE_MIDI_MAPPING
@@ -82,8 +86,9 @@ OSStatus AUMIDIBase::DelegateGetProperty(
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		AUParameterMIDIMapping* const maps = (static_cast<AUParameterMIDIMapping*>(outData));
-		mMIDIMapper->GetMaps(maps);
+		std::vector<AUParameterMIDIMapping> maps(mMIDIMapper->GetNumberMaps());
+		mMIDIMapper->GetMaps(maps.data());
+		Serialize(std::span(maps), outData);
 		return noErr;
 	}
 
@@ -91,8 +96,9 @@ OSStatus AUMIDIBase::DelegateGetProperty(
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		AUParameterMIDIMapping* const map = (static_cast<AUParameterMIDIMapping*>(outData));
-		mMIDIMapper->GetHotParameterMap(*map);
+		AUParameterMIDIMapping map{};
+		mMIDIMapper->GetHotParameterMap(map);
+		Serialize(map, outData);
 		return noErr;
 	}
 #endif
@@ -117,9 +123,9 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		const auto* const maps = static_cast<const AUParameterMIDIMapping*>(inData);
+		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
 		mMIDIMapper->AddParameterMapping(
-			maps, (inDataSize / sizeof(AUParameterMIDIMapping)), mAUBaseInstance);
+			maps.data(), static_cast<UInt32>(maps.size()), mAUBaseInstance);
 		mAUBaseInstance.PropertyChanged(
 			kAudioUnitProperty_AllParameterMIDIMappings, kAudioUnitScope_Global, 0);
 		return noErr;
@@ -129,10 +135,10 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		const auto* const maps = static_cast<const AUParameterMIDIMapping*>(inData);
+		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
 		bool didChange = false;
 		mMIDIMapper->RemoveParameterMapping(
-			maps, (inDataSize / sizeof(AUParameterMIDIMapping)), didChange);
+			maps.data(), static_cast<UInt32>(maps.size()), didChange);
 		if (didChange) {
 			mAUBaseInstance.PropertyChanged(
 				kAudioUnitProperty_AllParameterMIDIMappings, kAudioUnitScope_Global, 0);
@@ -144,7 +150,7 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		const auto& map = *static_cast<const AUParameterMIDIMapping*>(inData);
+		const auto map = Deserialize<AUParameterMIDIMapping>(inData);
 		mMIDIMapper->SetHotMapping(map);
 		return noErr;
 	}
@@ -153,9 +159,8 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
-		const auto* const mappings = static_cast<const AUParameterMIDIMapping*>(inData);
-		mMIDIMapper->ReplaceAllMaps(
-			mappings, (inDataSize / sizeof(AUParameterMIDIMapping)), mAUBaseInstance);
+		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
+		mMIDIMapper->ReplaceAllMaps(maps.data(), static_cast<UInt32>(maps.size()), mAUBaseInstance);
 		return noErr;
 	}
 #endif

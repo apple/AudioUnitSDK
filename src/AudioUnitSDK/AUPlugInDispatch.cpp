@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUPlugInDispatch.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 // clang-format off
 #include <AudioUnitSDK/AUConfig.h> // must come first

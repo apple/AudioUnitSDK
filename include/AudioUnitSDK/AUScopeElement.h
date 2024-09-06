@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUScopeElement.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUScopeElement_h
 #define AudioUnitSDK_AUScopeElement_h
@@ -103,7 +103,7 @@ public:
 	{
 		auto iter = lower_bound(k);
 		if (iter != mImpl.end()) {
-			if ((*iter).first != k) {
+			if (iter->first != k) {
 				iter = mImpl.end();
 			}
 		}
@@ -114,7 +114,7 @@ public:
 	{
 		auto iter = lower_bound(k);
 		if (iter != mImpl.end()) {
-			if ((*iter).first != k) {
+			if (iter->first != k) {
 				iter = mImpl.end();
 			}
 		}
@@ -131,14 +131,14 @@ public:
 			if (iter == mMap.end()) {
 				throw std::runtime_error("Invalid map key");
 			}
-			return (*iter).second;
+			return iter->second;
 		}
 
 		ItemProxy& operator=(const Value& v)
 		{
 			const auto iter = mMap.lower_bound(mKey);
-			if (iter != mMap.end() && (*iter).first == mKey) {
-				(*iter).second = v;
+			if (iter != mMap.end() && iter->first == mKey) {
+				iter->second = v;
 			} else {
 				mMap.mImpl.insert(iter, { mKey, v });
 			}

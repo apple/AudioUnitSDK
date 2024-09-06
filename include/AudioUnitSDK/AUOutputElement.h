@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUOutputElement.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUOutputElement_h
 #define AudioUnitSDK_AUOutputElement_h

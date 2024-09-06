@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBuffer.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUBuffer.h>
 #include <AudioUnitSDK/AUUtility.h>
@@ -8,6 +8,7 @@
 #include <AudioToolbox/AUComponent.h>
 
 #include <cassert>
+#include <cstddef>
 
 namespace ausdk {
 
@@ -94,7 +95,7 @@ AudioBufferList& AllocatedBuffer::Prepare(UInt32 channelsPerBuffer, UInt32 bytes
 		throw std::out_of_range("AllocatedBuffer::Prepare(): insufficient capacity");
 	}
 
-	auto* ptr = static_cast<Byte*>(mBufferData);
+	auto* ptr = static_cast<std::byte*>(mBufferData);
 	auto* const ptrend = ptr + mBufferDataSize;
 
 	for (UInt32 bufIdx = 0, nBufs = mAudioBufferList.mNumberBuffers; bufIdx < nBufs; ++bufIdx) {

@@ -22,6 +22,10 @@ macOS (OS X) 10.9 / iOS 9.0 or later.
 
 ## Changelog
 
+### Version 1.3.0
+
+- Minor updates and bug fixes.
+
 ### Version 1.2.0
 
 ##### Additions

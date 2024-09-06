@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUInputElement.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUInputElement.h>
 #include <AudioUnitSDK/AUUtility.h>
@@ -9,8 +9,8 @@ namespace ausdk {
 
 constexpr bool HasGoodBufferPointers(const AudioBufferList& abl, UInt32 nBytes) noexcept
 {
-	const AudioBuffer* buf = abl.mBuffers;                // NOLINT
-	for (UInt32 i = abl.mNumberBuffers; i-- > 0; ++buf) { // NOLINT
+	const AudioBuffer* buf = abl.mBuffers;                   // NOLINT
+	for (UInt32 i = abl.mNumberBuffers; i > 0; --i, ++buf) { // NOLINT
 		if (buf->mData == nullptr || buf->mDataByteSize < nBytes) {
 			return false;
 		}

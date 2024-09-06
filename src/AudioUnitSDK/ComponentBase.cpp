@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/ComponentBase.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 // self
 #include <AudioUnitSDK/AUUtility.h>
@@ -75,7 +75,7 @@ OSStatus ComponentBase::AP_Close(void* self)
 
 AudioComponentDescription ComponentBase::GetComponentDescription() const
 {
-	AudioComponentDescription desc = {};
+	AudioComponentDescription desc{};
 
 	if (CB_GetComponentDescription(mComponentInstance, &desc) == noErr) {
 		return desc;

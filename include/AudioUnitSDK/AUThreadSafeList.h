@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUThreadSafeList.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUThreadSafeList_h
 #define AudioUnitSDK_AUThreadSafeList_h
@@ -49,7 +49,7 @@ public:
 	// Atomic routines
 	void PushAtomic(T* item) noexcept
 	{
-		T* head_ = {};
+		T* head_{};
 		do {
 			head_ = mHead;
 			item->Next() = head_;

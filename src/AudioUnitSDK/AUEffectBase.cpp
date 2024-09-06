@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUEffectBase.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUEffectBase.h>
 #include <AudioUnitSDK/AUUtility.h>
@@ -136,10 +136,10 @@ OSStatus AUEffectBase::GetProperty(
 	if (inScope == kAudioUnitScope_Global) {
 		switch (inID) {
 		case kAudioUnitProperty_BypassEffect:
-			*static_cast<UInt32*>(outData) = (IsBypassEffect() ? 1 : 0); // NOLINT
+			Serialize<UInt32>(IsBypassEffect() ? 1 : 0, outData);
 			return noErr;
 		case kAudioUnitProperty_InPlaceProcessing:
-			*static_cast<UInt32*>(outData) = (mProcessesInPlace ? 1 : 0); // NOLINT
+			Serialize<UInt32>(mProcessesInPlace ? 1 : 0, outData);
 			return noErr;
 		default:
 			break;
@@ -157,7 +157,7 @@ OSStatus AUEffectBase::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inSc
 		case kAudioUnitProperty_BypassEffect: {
 			AUSDK_Require(inDataSize >= sizeof(UInt32), kAudioUnitErr_InvalidPropertyValue);
 
-			const bool tempNewSetting = *static_cast<const UInt32*>(inData) != 0;
+			const bool tempNewSetting = Deserialize<UInt32>(inData) != 0;
 			// we're changing the state of bypass
 			if (tempNewSetting != IsBypassEffect()) {
 				if (!tempNewSetting && IsBypassEffect() &&
@@ -169,7 +169,7 @@ OSStatus AUEffectBase::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inSc
 			return noErr;
 		}
 		case kAudioUnitProperty_InPlaceProcessing:
-			mProcessesInPlace = *static_cast<const UInt32*>(inData) != 0;
+			mProcessesInPlace = Deserialize<UInt32>(inData) != 0;
 			return noErr;
 		default:
 			break;
@@ -353,8 +353,6 @@ OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFl
 		return noErr;
 	}
 
-	bool ioSilence = false;
-
 	const bool silentInput = IsInputSilent(ioActionFlags, inFramesToProcess);
 	ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;
 
@@ -365,7 +363,7 @@ OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFl
 			continue;
 		}
 
-		ioSilence = silentInput;
+		bool ioSilence = silentInput;
 		const AudioBuffer* const srcBuffer = &inBuffer.mBuffers[channel]; // NOLINT subscript
 		AudioBuffer* const destBuffer = &outBuffer.mBuffers[channel];     // NOLINT subscript
 

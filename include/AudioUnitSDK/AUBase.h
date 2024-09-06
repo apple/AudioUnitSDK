@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBase.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 
 #ifndef AudioUnitSDK_AUBase_h
@@ -510,8 +510,8 @@ protected:
 		if (inShouldRelease) {
 			ioInfo.flags |= kAudioUnitParameterFlag_CFNameRelease;
 		}
-		CFStringGetCString(inName, &ioInfo.name[0], offsetof(AudioUnitParameterInfo, clumpID),
-			kCFStringEncodingUTF8);
+		CFStringGetCString(
+			inName, std::data(ioInfo.name), std::ssize(ioInfo.name), kCFStringEncodingUTF8);
 	}
 
 	static void HasClump(AudioUnitParameterInfo& ioInfo, UInt32 inClumpID) noexcept
@@ -667,10 +667,10 @@ protected:
 	ParameterEventList& GetParamEventList() noexcept { return mParamEventList; }
 	void SetBuffersAllocated(bool b) noexcept { mBuffersAllocated = b; }
 
-	[[nodiscard]] CFStringRef GetContextName() const { return *mContextName; }
-	void SetContextName(CFStringRef str) { mContextName = str; }
+	[[nodiscard]] CFStringRef GetContextName() const noexcept { return *mContextName; }
+	void SetContextName(CFStringRef str) noexcept { mContextName = str; }
 
-	[[nodiscard]] CFStringRef GetNickName() const { return *mNickName; }
+	[[nodiscard]] CFStringRef GetNickName() const noexcept { return *mNickName; }
 
 private:
 	bool mElementsCreated{ false };

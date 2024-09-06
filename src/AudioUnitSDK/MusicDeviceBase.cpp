@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/MusicDeviceBase.cpp
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUConfig.h>
 
@@ -45,9 +45,13 @@ OSStatus MusicDeviceBase::GetProperty(
 	AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement, void* outData)
 {
 	switch (inID) { // NOLINT if/else
-	case kMusicDeviceProperty_InstrumentCount:
+	case kMusicDeviceProperty_InstrumentCount: {
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		return GetInstrumentCount(*static_cast<UInt32*>(outData));
+		UInt32 instrumentCount{};
+		const auto result = GetInstrumentCount(instrumentCount);
+		Serialize(instrumentCount, outData);
+		return result;
+	}
 	default: {
 		auto result = AUBase::GetProperty(inID, inScope, inElement, outData);
 

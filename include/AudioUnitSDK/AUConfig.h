@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUConfig.h
-	@copyright	© 2000-2023 Apple Inc. All rights reserved.
+	@copyright	© 2000-2024 Apple Inc. All rights reserved.
 */
 
 #ifndef AudioUnitSDK_AUConfig_h
@@ -29,7 +29,7 @@ enum { noErr = 0 };
 #pragma mark Version
 
 #define AUSDK_VERSION_MAJOR 1
-#define AUSDK_VERSION_MINOR 2
+#define AUSDK_VERSION_MINOR 3
 #define AUSDK_VERSION_PATCH 0
 
 // -------------------------------------------------------------------------------------------------
