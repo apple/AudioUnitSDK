@@ -18,9 +18,25 @@ The AudioUnitSDK contains a set of base classes as well as utility sources requi
 Alternatively, you can add the AudioUnitSDK source directly to your project and build as part of your target. 
 
 ## Supported Deployment Targets
-macOS (OS X) 10.9 / iOS 9.0 or later.
+macOS 11.0 / iOS 14.0 or later.
 
 ## Changelog
+
+### Version 1.4.0
+
+##### Additions
+
+- Adopted `[[clang::nonblocking]]` attribute throughout the SDK using `AUSDK_RTSAFE_TYPE` and `AUSDK_RTSAFE_SECTION` macros with support for "loose" real-time safety contract.
+
+##### Changes
+
+- C++ language version to `C++23` for `std::expected`.
+- Improved exception safety throughout render paths and buffer allocations.
+- Minor bug fixes.
+
+##### Security
+
+- Fixed out-of-bounds read in AUMIDIBase deserialization.
 
 ### Version 1.3.0
 

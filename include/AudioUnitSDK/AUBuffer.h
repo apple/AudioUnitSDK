@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBuffer.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUBuffer_h
 #define AudioUnitSDK_AUBuffer_h
@@ -16,22 +16,39 @@
 
 namespace ausdk {
 
+AUSDK_BEGIN_NO_RT_WARNINGS
+
 /// struct created/destroyed by allocator. Do not attempt to manually create/destroy.
 struct AllocatedBuffer {
 	const UInt32 mMaximumNumberBuffers;
 	const UInt32 mMaximumBytesPerBuffer;
-	const UInt32 mReservedA[2]; // NOLINT C-style array
+	const UInt32 mReservedA[2]{}; // NOLINT C-style array
 	const UInt32 mHeaderSize;
 	const UInt32 mBufferDataSize;
-	const UInt32 mReservedB[2]; // NOLINT C-style array
+	const UInt32 mReservedB[2]{}; // NOLINT C-style array
 	void* const mBufferData;
-	void* const mReservedC;
+	void* const mReservedC{};
 
 	AudioBufferList mAudioBufferList{};
 	// opaque variable-length data may follow the AudioBufferList
 
+
+	AllocatedBuffer(UInt32 maxBuffers, UInt32 maxBytesPerBuffer, UInt32 headerSize,
+		UInt32 bufferDataSize, void* bufferData)
+		: mMaximumNumberBuffers{ maxBuffers }, mMaximumBytesPerBuffer{ maxBytesPerBuffer },
+		  mHeaderSize{ headerSize }, mBufferDataSize{ bufferDataSize }, mBufferData{ bufferData }
+	{
+	}
+
 	AudioBufferList& Prepare(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer);
+
+	ExpectedPtr<AudioBufferList> PrepareOrError(
+		UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_RTSAFE;
+
 	AudioBufferList& PrepareNull(UInt32 channelsPerBuffer, UInt32 bytesPerBuffer);
+
+	ExpectedPtr<AudioBufferList> PrepareNullOrError(
+		UInt32 channelsPerBuffer, UInt32 bytesPerBuffer) AUSDK_RTSAFE;
 };
 
 /*!
@@ -76,12 +93,38 @@ public:
 	AUBufferList& operator=(const AUBufferList&) = delete;
 	AUBufferList& operator=(AUBufferList&&) = delete;
 
-	AudioBufferList& PrepareBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames);
-	AudioBufferList& PrepareNullBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames);
+	AudioBufferList& PrepareBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames)
+	{
+		const auto maybeABL = PrepareBufferOrError(format, nFrames);
+		ThrowExceptionIfUnexpected(maybeABL);
+		return *maybeABL;
+	}
+
+	ExpectedPtr<AudioBufferList> PrepareBufferOrError(
+		const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_RTSAFE;
+
+	AudioBufferList& PrepareNullBuffer(const AudioStreamBasicDescription& format, UInt32 nFrames)
+	{
+		const auto maybeABL = PrepareNullBufferOrError(format, nFrames);
+		ThrowExceptionIfUnexpected(maybeABL);
+		return *maybeABL;
+	}
+
+	ExpectedPtr<AudioBufferList> PrepareNullBufferOrError(
+		const AudioStreamBasicDescription& format, UInt32 nFrames) AUSDK_RTSAFE;
 
 	AudioBufferList& SetBufferList(const AudioBufferList& abl)
 	{
-		ausdk::ThrowExceptionIf(mAllocatedStreams < abl.mNumberBuffers, -1);
+		const auto maybeABL = SetBufferListOrError(abl);
+		ThrowExceptionIfUnexpected(maybeABL);
+		return *maybeABL;
+	}
+
+	ExpectedPtr<AudioBufferList> SetBufferListOrError(const AudioBufferList& abl) AUSDK_RTSAFE
+	{
+		if (mAllocatedStreams < abl.mNumberBuffers) {
+			return Unexpected(-1);
+		}
 		mPtrState = EPtrState::ToExternalMemory;
 		auto& myabl = mBuffers->mAudioBufferList;
 		memcpy(&myabl, &abl,
@@ -93,33 +136,67 @@ public:
 
 	void SetBuffer(UInt32 index, const AudioBuffer& ab)
 	{
+		const auto res = SetBufferOrError(index, ab);
+		ThrowExceptionIfUnexpected(res);
+	}
+
+	Expected<void> SetBufferOrError(UInt32 index, const AudioBuffer& ab) AUSDK_RTSAFE
+	{
 		auto& myabl = mBuffers->mAudioBufferList;
-		ausdk::ThrowExceptionIf(
-			mPtrState == EPtrState::Invalid || index >= myabl.mNumberBuffers, -1);
+		if (mPtrState == EPtrState::Invalid || index >= myabl.mNumberBuffers) {
+			return Unexpected(-1);
+		}
 		mPtrState = EPtrState::ToExternalMemory;
 		myabl.mBuffers[index] = ab; // NOLINT
+		return {};
 	}
 
 	void InvalidateBufferList() noexcept { mPtrState = EPtrState::Invalid; }
 
 	[[nodiscard]] AudioBufferList& GetBufferList() const
 	{
-		ausdk::ThrowExceptionIf(mPtrState == EPtrState::Invalid, -1);
+		const auto maybeABL = GetBufferListOrError();
+		ThrowExceptionIfUnexpected(maybeABL);
+		return *maybeABL;
+	}
+
+	[[nodiscard]] ExpectedPtr<AudioBufferList> GetBufferListOrError() const AUSDK_RTSAFE
+	{
+		if (mPtrState == EPtrState::Invalid) {
+			return Unexpected(-1);
+		}
 		return mBuffers->mAudioBufferList;
 	}
 
 	void CopyBufferListTo(AudioBufferList& abl) const
 	{
-		ausdk::ThrowExceptionIf(mPtrState == EPtrState::Invalid, -1);
+		const auto res = CopyBufferListToOrError(abl);
+		ThrowExceptionIfUnexpected(res);
+	}
+
+	Expected<void> CopyBufferListToOrError(AudioBufferList& abl) const AUSDK_RTSAFE
+	{
+		if (mPtrState == EPtrState::Invalid) {
+			return Unexpected(-1);
+		}
 		memcpy(&abl, &mBuffers->mAudioBufferList,
 			static_cast<size_t>(
 				reinterpret_cast<std::byte*>(&abl.mBuffers[abl.mNumberBuffers]) - // NOLINT
 				reinterpret_cast<std::byte*>(&abl)));                             // NOLINT
+		return {};
 	}
 
 	void CopyBufferContentsTo(AudioBufferList& destabl) const
 	{
-		ausdk::ThrowExceptionIf(mPtrState == EPtrState::Invalid, -1);
+		const auto res = CopyBufferContentsToOrError(destabl);
+		ThrowExceptionIfUnexpected(res);
+	}
+
+	Expected<void> CopyBufferContentsToOrError(AudioBufferList& destabl) const AUSDK_RTSAFE
+	{
+		if (mPtrState == EPtrState::Invalid) {
+			return Unexpected(-1);
+		}
 		const auto& srcabl = mBuffers->mAudioBufferList;
 		const AudioBuffer* srcbuf = srcabl.mBuffers; // NOLINT
 		AudioBuffer* destbuf = destabl.mBuffers;     // NOLINT
@@ -129,11 +206,21 @@ public:
 				srcabl.mNumberBuffers) { // duplicate last source to additional outputs [4341137]
 				--srcbuf;                // NOLINT
 			}
-			if (destbuf->mData != srcbuf->mData) {
-				memmove(destbuf->mData, srcbuf->mData, srcbuf->mDataByteSize);
+
+			const auto srcByteSize = srcbuf->mDataByteSize;
+			const void* srcData = srcbuf->mData;
+			void* dstData = destbuf->mData;
+
+			if (srcByteSize > 0 && (srcData == nullptr || dstData == nullptr)) {
+				return Unexpected(-1);
 			}
-			destbuf->mDataByteSize = srcbuf->mDataByteSize;
+
+			if (dstData != srcData) {
+				memmove(dstData, srcData, srcByteSize);
+			}
+			destbuf->mDataByteSize = srcByteSize;
 		}
+		return {};
 	}
 
 	void Allocate(const AudioStreamBasicDescription& format, UInt32 nFrames);
@@ -160,5 +247,7 @@ private:
 };
 
 } // namespace ausdk
+
+AUSDK_END_NO_RT_WARNINGS
 
 #endif // AudioUnitSDK_AUBuffer_h

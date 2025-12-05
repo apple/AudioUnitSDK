@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBase.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 // clang-format off
 #include <AudioUnitSDK/AUConfig.h> // must come first
@@ -20,6 +20,8 @@
 #include <span>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 #if TARGET_OS_MAC && (TARGET_CPU_X86 || TARGET_CPU_X86_64)
 
@@ -241,7 +243,10 @@ OSStatus AUBase::DoReset(AudioUnitScope inScope, AudioUnitElement inElement)
 
 //_____________________________________________________________________________
 //
-OSStatus AUBase::Reset(AudioUnitScope /*inScope*/, AudioUnitElement /*inElement*/) { return noErr; }
+OSStatus AUBase::Reset(AudioUnitScope inScope, AudioUnitElement inElement)
+{
+	return BaseReset(inScope, inElement);
+}
 
 //_____________________________________________________________________________
 //
@@ -999,10 +1004,10 @@ OSStatus AUBase::RemoveRenderNotification(AURenderCallback inProc, void* inRefCo
 //_____________________________________________________________________________
 //
 OSStatus AUBase::GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-	AudioUnitElement inElement, AudioUnitParameterValue& outValue)
+	AudioUnitElement inElement, AudioUnitParameterValue& outValue) AUSDK_RTSAFE
 {
-	const auto& elem = Element(inScope, inElement);
-	outValue = elem.GetParameter(inID);
+	AUElement& elem = AUSDK_UnwrapOrReturnError(GetElementOrError(inScope, inElement));
+	outValue = AUSDK_UnwrapOrReturnError(elem.GetParameterOrError(inID));
 	return noErr;
 }
 
@@ -1010,17 +1015,18 @@ OSStatus AUBase::GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
 //_____________________________________________________________________________
 //
 OSStatus AUBase::SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-	AudioUnitElement inElement, AudioUnitParameterValue inValue, UInt32 /*inBufferOffsetInFrames*/)
+	AudioUnitElement inElement, AudioUnitParameterValue inValue,
+	UInt32 /*inBufferOffsetInFrames*/) AUSDK_RTSAFE
 {
-	auto& elem = Element(inScope, inElement);
-	elem.SetParameter(inID, inValue);
+	AUElement& elem = AUSDK_UnwrapOrReturnError(GetElementOrError(inScope, inElement));
+	AUSDK_CheckReturnError(elem.SetParameterOrError(inID, inValue));
 	return noErr;
 }
 
 //_____________________________________________________________________________
 //
 OSStatus AUBase::ScheduleParameter(
-	const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents)
+	const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents) AUSDK_RTSAFE
 {
 	const bool canScheduleParameters = CanScheduleParameters();
 
@@ -1032,7 +1038,8 @@ OSStatus AUBase::ScheduleParameter(
 				pe.eventValues.immediate.bufferOffset); // NOLINT union
 		}
 		if (canScheduleParameters) {
-			mParamEventList.push_back(pe);
+			// TODO: Need a realtime-safe parameter schedule
+			AUSDK_RT_UNSAFE(mParamEventList.push_back(pe));
 		}
 	}
 
@@ -1042,7 +1049,7 @@ OSStatus AUBase::ScheduleParameter(
 // ____________________________________________________________________________
 //
 constexpr bool ParameterEventListSortPredicate(
-	const AudioUnitParameterEvent& ev1, const AudioUnitParameterEvent& ev2) noexcept
+	const AudioUnitParameterEvent& ev1, const AudioUnitParameterEvent& ev2) AUSDK_RTSAFE
 {
 	constexpr auto bufferOffset = [](const AudioUnitParameterEvent& event) {
 		// ramp.startBufferOffset is signed
@@ -1057,7 +1064,7 @@ constexpr bool ParameterEventListSortPredicate(
 // ____________________________________________________________________________
 //
 OSStatus AUBase::ProcessForScheduledParams(
-	ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData)
+	ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData) AUSDK_RTSAFE
 {
 	OSStatus result = noErr;
 
@@ -1067,7 +1074,7 @@ OSStatus AUBase::ProcessForScheduledParams(
 
 
 	// sort the ParameterEventList by startBufferOffset
-	std::ranges::sort(inParamList, ParameterEventListSortPredicate);
+	std::ranges::sort(inParamList, RTSafeFP{ ParameterEventListSortPredicate });
 
 	while (framesRemaining > 0) {
 		// first of all, go through the ramped automation events and find out where the next
@@ -1124,11 +1131,11 @@ OSStatus AUBase::ProcessForScheduledParams(
 			}
 
 			if (eventFallsInSlice) {
-				AUElement* const element = GetElement(event.scope, event.element);
+				const auto element = GetElementOrError(event.scope, event.element);
 
-				if (element != nullptr) {
-					element->SetScheduledEvent(event.parameter, event, currentStartFrame,
-						currentEndFrame - currentStartFrame);
+				if (element) {
+					std::ignore = element->SetScheduledEvent(event.parameter, event,
+						currentStartFrame, currentEndFrame - currentStartFrame);
 				}
 			}
 		}
@@ -1176,11 +1183,36 @@ void AUBase::SetWantsRenderThreadID(bool inFlag)
 //
 OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, UInt32 inBusNumber, UInt32 inFramesToProcess,
-	AudioBufferList& ioData)
+	AudioBufferList& ioData) noexcept AUSDK_RTSAFE
 {
-	const auto errorExit = [this](OSStatus error) {
-		AUSDK_LogError("  from %s, render err: %d", GetLoggingString(), static_cast<int>(error));
+	const auto postRender = [this, &ioActionFlags, &inTimeStamp, inBusNumber, inFramesToProcess, &ioData](OSStatus error) AUSDK_RTSAFE_LAMBDA {
 		SetRenderError(error);
+
+		if (mRenderCallbacksTouched) {
+			AudioUnitRenderActionFlags flags = ioActionFlags | kAudioUnitRenderAction_PostRender;
+
+			if (error != noErr) {
+				flags |= kAudioUnitRenderAction_PostRenderError;
+			}
+
+			for (const RenderCallback& rc : mRenderCallbacks) {
+				rc.mRenderNotify(rc.mRenderNotifyRefCon, &flags, &inTimeStamp, inBusNumber,
+					inFramesToProcess, &ioData);
+			}
+		}
+
+		// The vector is being emptied because these events should only apply to this Render cycle,
+		// so anything left over is from a preceding cycle and should be dumped.
+		// New scheduled parameters must be scheduled from the next pre-render callback.
+		if (!mParamEventList.empty()) {
+			mParamEventList.clear();
+		}
+	};
+
+	const auto errorExit = [this, postRender](OSStatus error) AUSDK_RTSAFE_LAMBDA {
+		AUSDK_LogError_RT("  from %s, render err: %d", GetLoggingString(), static_cast<int>(error));
+		SetRenderError(error);
+		postRender(error);
 		return error;
 	};
 
@@ -1188,16 +1220,19 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 
 	[[maybe_unused]] const DenormalDisabler denormalDisabler;
 
+#if AUSDK_LOOSE_RT_SAFETY
 	try {
+#endif // AUSDK_LOOSE_RT_SAFETY
+
 		AUSDK_Require(IsInitialized(), errorExit(kAudioUnitErr_Uninitialized));
 		if (inFramesToProcess > mMaxFramesPerSlice) {
 #ifndef AUSDK_NO_LOGGING
-			const auto now = HostTime::Current();
+			const UInt64 now = HostTime::Current();
 			if (static_cast<double>(now - mLastTimeMessagePrinted) >
 				mHostTimeFrequency) { // not more than once per second.
 				mLastTimeMessagePrinted = now;
-				AUSDK_LogError("kAudioUnitErr_TooManyFramesToProcess : inFramesToProcess=%u, "
-							   "mMaxFramesPerSlice=%u",
+				AUSDK_LogError_RT("kAudioUnitErr_TooManyFramesToProcess : inFramesToProcess=%u, "
+								  "mMaxFramesPerSlice=%u",
 					static_cast<unsigned>(inFramesToProcess),
 					static_cast<unsigned>(mMaxFramesPerSlice));
 			}
@@ -1207,9 +1242,9 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 		AUSDK_Require(!UsesFixedBlockSize() || inFramesToProcess == GetMaxFramesPerSlice(),
 			errorExit(kAudio_ParamError));
 
-		auto& output = Output(inBusNumber); // will throw if non-existant
+		AUOutputElement& output = AUSDK_UnwrapOrReturnError(GetOutputOrError(inBusNumber));
 		if (ASBD::NumberChannelStreams(output.GetStreamFormat()) != ioData.mNumberBuffers) {
-			AUSDK_LogError(
+			AUSDK_LogError_RT(
 				"ioData.mNumberBuffers=%u, "
 				"ASBD::NumberChannelStreams(output.GetStreamFormat())=%u; kAudio_ParamError",
 				static_cast<unsigned>(ioData.mNumberBuffers),
@@ -1225,8 +1260,8 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 				// only care about the size if the buffer is non-null
 				if (buf.mDataByteSize < expectedBufferByteSize) {
 					// if the buffer is too small, we cannot render safely. kAudio_ParamError.
-					AUSDK_LogError("%u frames, %u bytes/frame, expected %u-byte buffer; "
-								   "ioData.mBuffers[%u].mDataByteSize=%u; kAudio_ParamError",
+					AUSDK_LogError_RT("%u frames, %u bytes/frame, expected %u-byte buffer; "
+									  "ioData.mBuffers[%u].mDataByteSize=%u; kAudio_ParamError",
 						static_cast<unsigned>(inFramesToProcess),
 						static_cast<unsigned>(output.GetStreamFormat().mBytesPerFrame),
 						expectedBufferByteSize, ibuf, static_cast<unsigned>(buf.mDataByteSize));
@@ -1242,7 +1277,7 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (mRenderCallbacksTouched) {
@@ -1250,40 +1285,27 @@ OSStatus AUBase::DoRender(AudioUnitRenderActionFlags& ioActionFlags,
 
 			AudioUnitRenderActionFlags flags = ioActionFlags | kAudioUnitRenderAction_PreRender;
 			for (const RenderCallback& rc : mRenderCallbacks) {
-				(*static_cast<AURenderCallback>(rc.mRenderNotify))(rc.mRenderNotifyRefCon, &flags,
-					&inTimeStamp, inBusNumber, inFramesToProcess, &ioData);
+				rc.mRenderNotify(rc.mRenderNotifyRefCon, &flags, &inTimeStamp, inBusNumber,
+					inFramesToProcess, &ioData);
 			}
 		}
 
 		theError =
 			DoRenderBus(ioActionFlags, inTimeStamp, inBusNumber, output, inFramesToProcess, ioData);
+		postRender(theError);
 
-		SetRenderError(theError);
-
-		if (mRenderCallbacksTouched) {
-			AudioUnitRenderActionFlags flags = ioActionFlags | kAudioUnitRenderAction_PostRender;
-
-			if (theError != noErr) {
-				flags |= kAudioUnitRenderAction_PostRenderError;
-			}
-
-			for (const RenderCallback& rc : mRenderCallbacks) {
-				(*static_cast<AURenderCallback>(rc.mRenderNotify))(rc.mRenderNotifyRefCon, &flags,
-					&inTimeStamp, inBusNumber, inFramesToProcess, &ioData);
-			}
-		}
-
-		// The vector is being emptied because these events should only apply to this Render cycle,
-		// so anything left over is from a preceding cycle and should be dumped.
-		// New scheduled parameters must be scheduled from the next pre-render callback.
-		if (!mParamEventList.empty()) {
-			mParamEventList.clear();
-		}
+#if AUSDK_LOOSE_RT_SAFETY
+		AUSDK_RT_UNSAFE_BEGIN("exception-catching under loose safety model")
+	} catch (const ausdk::AUException& err) {
+		return errorExit(err.mError);
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
+#endif // AUSDK_LOOSE_RT_SAFETY
+
 	return theError;
 }
 
@@ -1295,10 +1317,12 @@ inline bool CheckRenderArgs(AudioUnitRenderActionFlags flags)
 //_____________________________________________________________________________
 //
 OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
-	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess, AudioBufferList& ioData)
+	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess,
+	AudioBufferList& ioData) noexcept AUSDK_RTSAFE
 {
-	const auto errorExit = [this](OSStatus error) {
-		AUSDK_LogError("  from %s, process err: %d", GetLoggingString(), static_cast<int>(error));
+	const auto errorExit = [this](OSStatus error) AUSDK_RTSAFE_LAMBDA {
+		AUSDK_LogError_RT(
+			"  from %s, process err: %d", GetLoggingString(), static_cast<int>(error));
 		SetRenderError(error);
 		return error;
 	};
@@ -1307,7 +1331,9 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 
 	[[maybe_unused]] const DenormalDisabler denormalDisabler;
 
+#if AUSDK_LOOSE_RT_SAFETY
 	try {
+#endif // AUSDK_LOOSE_RT_SAFETY
 		if (CheckRenderArgs(ioActionFlags)) {
 			AUSDK_Require(IsInitialized(), errorExit(kAudioUnitErr_Uninitialized));
 			AUSDK_Require(inFramesToProcess <= mMaxFramesPerSlice,
@@ -1315,11 +1341,11 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 			AUSDK_Require(!UsesFixedBlockSize() || inFramesToProcess == GetMaxFramesPerSlice(),
 				errorExit(kAudio_ParamError));
 
-			const auto& input = Input(0); // will throw if non-existant
+			AUInputElement& input = AUSDK_UnwrapOrReturnError(GetInputOrError(0));
 			if (ASBD::NumberChannelStreams(input.GetStreamFormat()) != ioData.mNumberBuffers) {
-				AUSDK_LogError(
+				AUSDK_LogError_RT(
 					"ioData.mNumberBuffers=%u, "
-					"ASBD::NumberChannelStreams(input->GetStreamFormat())=%u; kAudio_ParamError",
+					"ASBD::NumberChannelStreams(input.GetStreamFormat())=%u; kAudio_ParamError",
 					static_cast<unsigned>(ioData.mNumberBuffers),
 					static_cast<unsigned>(ASBD::NumberChannelStreams(input.GetStreamFormat())));
 				return errorExit(kAudio_ParamError);
@@ -1333,8 +1359,8 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 					// only care about the size if the buffer is non-null
 					if (buf.mDataByteSize < expectedBufferByteSize) {
 						// if the buffer is too small, we cannot render safely. kAudio_ParamError.
-						AUSDK_LogError("%u frames, %u bytes/frame, expected %u-byte buffer; "
-									   "ioData.mBuffers[%u].mDataByteSize=%u; kAudio_ParamError",
+						AUSDK_LogError_RT("%u frames, %u bytes/frame, expected %u-byte buffer; "
+										  "ioData.mBuffers[%u].mDataByteSize=%u; kAudio_ParamError",
 							static_cast<unsigned>(inFramesToProcess),
 							static_cast<unsigned>(input.GetStreamFormat().mBytesPerFrame),
 							expectedBufferByteSize, ibuf, static_cast<unsigned>(buf.mDataByteSize));
@@ -1351,7 +1377,7 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (NeedsToRender(inTimeStamp)) {
@@ -1359,22 +1385,27 @@ OSStatus AUBase::DoProcess(AudioUnitRenderActionFlags& ioActionFlags,
 		} else {
 			theError = noErr;
 		}
-
+#if AUSDK_LOOSE_RT_SAFETY
+		AUSDK_RT_UNSAFE_BEGIN("exception-catching under loose safety model")
+	} catch (const ausdk::AUException& err) {
+		return errorExit(err.mError);
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
+#endif // AUSDK_LOOSE_RT_SAFETY
 	return theError;
 }
 
 OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess, UInt32 inNumberInputBufferLists,
 	const AudioBufferList** inInputBufferLists, UInt32 inNumberOutputBufferLists,
-	AudioBufferList** ioOutputBufferLists)
+	AudioBufferList** ioOutputBufferLists) noexcept AUSDK_RTSAFE
 {
-	const auto errorExit = [this](OSStatus error) {
-		AUSDK_LogError(
+	const auto errorExit = [this](OSStatus error) AUSDK_RTSAFE_LAMBDA {
+		AUSDK_LogError_RT(
 			"  from %s, processmultiple err: %d", GetLoggingString(), static_cast<int>(error));
 		SetRenderError(error);
 		return error;
@@ -1384,7 +1415,9 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 
 	[[maybe_unused]] const DenormalDisabler denormalDisabler;
 
+#if AUSDK_LOOSE_RT_SAFETY
 	try {
+#endif // AUSDK_LOOSE_RT_SAFETY
 		if (CheckRenderArgs(ioActionFlags)) {
 			AUSDK_Require(IsInitialized(), errorExit(kAudioUnitErr_Uninitialized));
 			AUSDK_Require(inFramesToProcess <= mMaxFramesPerSlice,
@@ -1394,15 +1427,15 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 
 			for (unsigned ibl = 0; ibl < inNumberInputBufferLists; ++ibl) {
 				if (inInputBufferLists[ibl] != nullptr) { // NOLINT
-					const auto& input = Input(ibl);       // will throw if non-existant
+					AUInputElement& input = AUSDK_UnwrapOrReturnError(GetInputOrError(ibl));
 					const unsigned expectedBufferByteSize =
 						inFramesToProcess * input.GetStreamFormat().mBytesPerFrame;
 
 					if (ASBD::NumberChannelStreams(input.GetStreamFormat()) !=
 						inInputBufferLists[ibl]->mNumberBuffers) { // NOLINT
-						AUSDK_LogError("inInputBufferLists[%u]->mNumberBuffers=%u, "
-									   "ASBD::NumberChannelStreams(input.GetStreamFormat())=%u; "
-									   "kAudio_ParamError",
+						AUSDK_LogError_RT("inInputBufferLists[%u]->mNumberBuffers=%u, "
+										  "ASBD::NumberChannelStreams(input.GetStreamFormat())=%u; "
+										  "kAudio_ParamError",
 							ibl, static_cast<unsigned>(inInputBufferLists[ibl]->mNumberBuffers),
 							static_cast<unsigned>(
 								ASBD::NumberChannelStreams(input.GetStreamFormat())));
@@ -1410,13 +1443,13 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 					}
 
 					for (unsigned ibuf = 0;
-						 ibuf < inInputBufferLists[ibl]->mNumberBuffers; // NOLINT
-						 ++ibuf) {
+						ibuf < inInputBufferLists[ibl]->mNumberBuffers; // NOLINT
+						++ibuf) {
 						const AudioBuffer& buf = inInputBufferLists[ibl]->mBuffers[ibuf]; // NOLINT
 						if (buf.mData != nullptr) {
 							if (buf.mDataByteSize < expectedBufferByteSize) {
 								// the buffer is too small
-								AUSDK_LogError(
+								AUSDK_LogError_RT(
 									"%u frames, %u bytes/frame, expected %u-byte buffer; "
 									"inInputBufferLists[%u].mBuffers[%u].mDataByteSize=%u; "
 									"kAudio_ParamError",
@@ -1438,15 +1471,16 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 
 			for (unsigned obl = 0; obl < inNumberOutputBufferLists; ++obl) {
 				if (ioOutputBufferLists[obl] != nullptr) { // NOLINT
-					const auto& output = Output(obl);      // will throw if non-existant
+					AUOutputElement& output = AUSDK_UnwrapOrReturnError(GetOutputOrError(obl));
 					const unsigned expectedBufferByteSize =
 						inFramesToProcess * output.GetStreamFormat().mBytesPerFrame;
 
 					if (ASBD::NumberChannelStreams(output.GetStreamFormat()) !=
 						ioOutputBufferLists[obl]->mNumberBuffers) { // NOLINT
-						AUSDK_LogError("ioOutputBufferLists[%u]->mNumberBuffers=%u, "
-									   "ASBD::NumberChannelStreams(output.GetStreamFormat())=%u; "
-									   "kAudio_ParamError",
+						AUSDK_LogError_RT(
+							"ioOutputBufferLists[%u]->mNumberBuffers=%u, "
+							"ASBD::NumberChannelStreams(output.GetStreamFormat())=%u; "
+							"kAudio_ParamError",
 							obl, static_cast<unsigned>(ioOutputBufferLists[obl]->mNumberBuffers),
 							static_cast<unsigned>(
 								ASBD::NumberChannelStreams(output.GetStreamFormat())));
@@ -1454,15 +1488,15 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 					}
 
 					for (unsigned obuf = 0;
-						 obuf < ioOutputBufferLists[obl]->mNumberBuffers; // NOLINT
-						 ++obuf) {
+						obuf < ioOutputBufferLists[obl]->mNumberBuffers; // NOLINT
+						++obuf) {
 						AudioBuffer& buf = ioOutputBufferLists[obl]->mBuffers[obuf]; // NOLINT
 						if (buf.mData != nullptr) {
 							// only care about the size if the buffer is non-null
 							if (buf.mDataByteSize < expectedBufferByteSize) {
 								// if the buffer is too small, we cannot render safely.
 								// kAudio_ParamError.
-								AUSDK_LogError(
+								AUSDK_LogError_RT(
 									"%u frames, %u bytes/frame, expected %u-byte buffer; "
 									"ioOutputBufferLists[%u]->mBuffers[%u].mDataByteSize=%u; "
 									"kAudio_ParamError",
@@ -1488,7 +1522,7 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		}
 
 		if (WantsRenderThreadID()) {
-			mRenderThreadID = std::this_thread::get_id();
+			mRenderThreadID = AUSDK_RT_UNSAFE(std::this_thread::get_id());
 		}
 
 		if (NeedsToRender(inTimeStamp)) {
@@ -1498,11 +1532,17 @@ OSStatus AUBase::DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		} else {
 			theError = noErr;
 		}
+#if AUSDK_LOOSE_RT_SAFETY
+		AUSDK_RT_UNSAFE_BEGIN("exception-catching under loose safety model")
+	} catch (const ausdk::AUException& err) {
+		return errorExit(err.mError);
 	} catch (const OSStatus& err) {
 		return errorExit(err);
 	} catch (...) {
 		return errorExit(-1);
 	}
+	AUSDK_RT_UNSAFE_END
+#endif // AUSDK_LOOSE_RT_SAFETY
 	return theError;
 }
 
@@ -1584,7 +1624,7 @@ bool AUBase::IsStreamFormatWritable(AudioUnitScope scope, AudioUnitElement eleme
 //_____________________________________________________________________________
 //
 AudioStreamBasicDescription AUBase::GetStreamFormat(
-	AudioUnitScope inScope, AudioUnitElement inElement)
+	AudioUnitScope inScope, AudioUnitElement inElement) AUSDK_RTSAFE_LOOSE
 {
 	// #warning "aliasing of global scope format should be pushed to subclasses"
 	AUIOElement* element = nullptr;
@@ -2027,5 +2067,7 @@ std::string AUBase::CreateLoggingString() const
 		   MakeStringFrom4CC(desc.componentSubType) + '/' +
 		   MakeStringFrom4CC(desc.componentManufacturer);
 }
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk

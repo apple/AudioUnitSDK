@@ -23,7 +23,6 @@ clang-analyzer-*,
 '
 WarningsAsErrors: ''
 HeaderFilterRegex: ''
-AnalyzeTemporaryDtors: false
 FormatStyle:     file
 CheckOptions:    
   - key:             cppcoreguidelines-pro-type-member-init.IgnoreArrays

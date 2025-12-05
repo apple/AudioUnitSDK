@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUBase.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 
 #ifndef AudioUnitSDK_AUBase_h
@@ -42,6 +42,8 @@
 // ________________________________________________________________________
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 /*!
 	@class	AUBase
@@ -101,7 +103,14 @@ public:
 	/// Implements the entry point and ensures that critical audio Reset work always occurs
 	OSStatus DoReset(AudioUnitScope inScope, AudioUnitElement inElement);
 
+	/// Not realtime-safe by contract, but if a derived class wishes to implement a safe Reset,
+	/// it can call BaseReset().
 	virtual OSStatus Reset(AudioUnitScope inScope, AudioUnitElement inElement);
+
+	OSStatus BaseReset(AudioUnitScope /*inScope*/, AudioUnitElement /*inElement*/) AUSDK_RTSAFE
+	{
+		return noErr;
+	}
 
 	// Note about GetPropertyInfo, GetProperty, SetProperty:
 	// Certain properties are trapped out in these dispatch functions and handled with different
@@ -134,26 +143,45 @@ public:
 	virtual OSStatus RemoveRenderNotification(AURenderCallback inProc, void* inRefCon);
 
 	virtual OSStatus GetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-		AudioUnitElement inElement, AudioUnitParameterValue& outValue);
-	virtual OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
-		AudioUnitElement inElement, AudioUnitParameterValue inValue, UInt32 inBufferOffsetInFrames);
+		AudioUnitElement inElement, AudioUnitParameterValue& outValue) AUSDK_RTSAFE;
 
-	[[nodiscard]] virtual bool CanScheduleParameters() const = 0;
+	virtual OSStatus SetParameter(AudioUnitParameterID inID, AudioUnitScope inScope,
+		AudioUnitElement inElement, AudioUnitParameterValue inValue,
+		UInt32 inBufferOffsetInFrames) AUSDK_RTSAFE;
+
+	// N.B. For internal use; asserts that the ParameterID is valid.
+	AudioUnitParameterValue GetParameterRT(AudioUnitParameterID paramID) AUSDK_RTSAFE
+	{
+		return Globals()->GetParameterRT(paramID);
+	}
+	void SetParameterRT(AudioUnitParameterID paramID, AudioUnitParameterValue inValue) AUSDK_RTSAFE
+	{
+		Globals()->SetParameterRT(paramID, inValue);
+	}
+
+	[[nodiscard]] virtual bool CanScheduleParameters() const AUSDK_RTSAFE = 0;
+
 	virtual OSStatus ScheduleParameter(
-		const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents);
+		const AudioUnitParameterEvent* inParameterEvent, UInt32 inNumEvents) AUSDK_RTSAFE;
+
+	// The non-virtual DoRender/etc. methods are noexcept because they catch any exceptions.
 
 	OSStatus DoRender(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		UInt32 inBusNumber, UInt32 inFramesToProcess, AudioBufferList& ioData);
+		UInt32 inBusNumber, UInt32 inFramesToProcess,
+		AudioBufferList& ioData) noexcept AUSDK_RTSAFE;
+
 	OSStatus DoProcess(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		UInt32 inFramesToProcess, AudioBufferList& ioData);
+		UInt32 inFramesToProcess, AudioBufferList& ioData) noexcept AUSDK_RTSAFE;
+
 	OSStatus DoProcessMultiple(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioTimeStamp& inTimeStamp, UInt32 inFramesToProcess,
 		UInt32 inNumberInputBufferLists, const AudioBufferList** inInputBufferLists,
-		UInt32 inNumberOutputBufferLists, AudioBufferList** ioOutputBufferLists);
+		UInt32 inNumberOutputBufferLists,
+		AudioBufferList** ioOutputBufferLists) noexcept AUSDK_RTSAFE;
 
 	virtual OSStatus ProcessBufferLists(AudioUnitRenderActionFlags& /*ioActionFlags*/,
 		const AudioBufferList& /*inBuffer*/, AudioBufferList& /*outBuffer*/,
-		UInt32 /*inFramesToProcess*/)
+		UInt32 /*inFramesToProcess*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -161,7 +189,7 @@ public:
 	virtual OSStatus ProcessMultipleBufferLists(AudioUnitRenderActionFlags& /*ioActionFlags*/,
 		UInt32 /*inFramesToProcess*/, UInt32 /*inNumberInputBufferLists*/,
 		const AudioBufferList** /*inInputBufferLists*/, UInt32 /*inNumberOutputBufferLists*/,
-		AudioBufferList** /*ioOutputBufferLists*/)
+		AudioBufferList** /*ioOutputBufferLists*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -170,7 +198,7 @@ public:
 		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inOutputBusNumber*/,
 		UInt32 /*inNumberOfPackets*/, UInt32* /*outNumberOfPackets*/,
 		AudioStreamPacketDescription* /*outPacketDescriptions*/, AudioBufferList& /*ioData*/,
-		void* /*outMetadata*/, UInt32* /*outMetadataByteSize*/)
+		void* /*outMetadata*/, UInt32* /*outMetadataByteSize*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -184,7 +212,8 @@ public:
 	// GetOutput(inBusNumber)->PrepareBuffer(nFrames) -- if PrepareBuffer is called, a
 	// copy may occur after rendering.
 	virtual OSStatus RenderBus(AudioUnitRenderActionFlags& ioActionFlags,
-		const AudioTimeStamp& inTimeStamp, UInt32 /*inBusNumber*/, UInt32 inNumberFrames)
+		const AudioTimeStamp& inTimeStamp, UInt32 /*inBusNumber*/,
+		UInt32 inNumberFrames) AUSDK_RTSAFE
 	{
 		if (NeedsToRender(inTimeStamp)) {
 			return Render(ioActionFlags, inTimeStamp, inNumberFrames);
@@ -197,7 +226,7 @@ public:
 	// GetOutput(0)->GetBufferList() instead of GetOutput(0)->PrepareBuffer(nFrames)
 	//  -- if PrepareBuffer is called, a copy may occur after rendering.
 	virtual OSStatus Render(AudioUnitRenderActionFlags& /*ioActionFlags*/,
-		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inNumberFrames*/)
+		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inNumberFrames*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
@@ -248,9 +277,9 @@ public:
 #endif
 
 	// default is no latency, and unimplemented tail time
-	virtual Float64 GetLatency() { return 0.0; }
-	virtual Float64 GetTailTime() { return 0.0; }
-	virtual bool SupportsTail() { return false; }
+	virtual Float64 GetLatency() AUSDK_RTSAFE { return 0.0; }
+	virtual Float64 GetTailTime() AUSDK_RTSAFE { return 0.0; }
+	virtual bool SupportsTail() AUSDK_RTSAFE { return false; }
 
 	// Stream formats: scope will always be input or output
 	bool IsStreamFormatWritable(AudioUnitScope scope, AudioUnitElement element);
@@ -270,7 +299,7 @@ public:
 		const AudioStreamBasicDescription& inNewFormat);
 
 	virtual AudioStreamBasicDescription GetStreamFormat(
-		AudioUnitScope inScope, AudioUnitElement inElement);
+		AudioUnitScope inScope, AudioUnitElement inElement) AUSDK_RTSAFE_LOOSE;
 
 	// Will only be called after StreamFormatWritable
 	// and ValidFormat have succeeded.
@@ -291,17 +320,24 @@ public:
 		return mScopes[inScope]; // NOLINT
 	}
 
-	virtual AUScope* GetScopeExtended(AudioUnitScope /*inScope*/) { return nullptr; }
+	virtual AUScope* GetScopeExtended(AudioUnitScope /*inScope*/) AUSDK_RTSAFE { return nullptr; }
 
 	AUScope& GlobalScope() { return mScopes[kAudioUnitScope_Global]; }
 	AUScope& Inputs() { return mScopes[kAudioUnitScope_Input]; }
 	AUScope& Outputs() { return mScopes[kAudioUnitScope_Output]; }
 	AUScope& Groups() { return mScopes[kAudioUnitScope_Group]; }
-	AUElement* Globals() { return mScopes[kAudioUnitScope_Global].GetElement(0); }
+
+	AUElement* Globals() AUSDK_RTSAFE
+	{
+		auto maybeElem = mScopes[kAudioUnitScope_Global].GetElementOrError(0);
+		AUSDK_Assert(maybeElem);
+		return maybeElem.get();
+	}
 
 	void SetNumberOfElements(AudioUnitScope inScope, UInt32 numElements);
 	virtual std::unique_ptr<AUElement> CreateElement(
 		AudioUnitScope scope, AudioUnitElement element);
+
 
 	AUElement* GetElement(AudioUnitScope inScope, AudioUnitElement inElement)
 	{
@@ -349,10 +385,72 @@ public:
 	AUElement* GetGroup(AudioUnitElement inElement) { return &Group(inElement); }
 	AUElement& Group(AudioUnitElement inElement) { return *Groups().SafeGetElement(inElement); }
 
-	OSStatus PullInput(UInt32 inBusNumber, AudioUnitRenderActionFlags& ioActionFlags,
-		const AudioTimeStamp& inTimeStamp, UInt32 inNumberFrames)
+	ExpectedPtr<AUScope> GetScopeOrError(AudioUnitScope inScope) AUSDK_RTSAFE
 	{
-		AUInputElement& input = Input(inBusNumber); // throws if error
+		if (inScope >= kNumScopes) {
+			if (auto* scope = GetScopeExtended(inScope)) {
+				return *scope;
+			}
+			return Unexpected(kAudioUnitErr_InvalidScope);
+		}
+		return mScopes[inScope]; // NOLINT
+	}
+
+	ExpectedPtr<AUIOElement> GetIOElementOrError(
+		AudioUnitScope inScope, AudioUnitElement inElement) AUSDK_RTSAFE
+	{
+		AUScope& scope = AUSDK_UnwrapOrReturnUnexpected(GetScopeOrError(inScope));
+		return scope.GetIOElementOrError(inElement);
+	}
+
+	ExpectedPtr<AUElement> GetElementOrError(
+		AudioUnitScope inScope, AudioUnitElement inElement) AUSDK_RTSAFE
+	{
+		AUScope& scope = AUSDK_UnwrapOrReturnUnexpected(GetScopeOrError(inScope));
+		return scope.GetElementOrError(inElement);
+	}
+
+	template <typename E = AUInputElement>
+	ExpectedPtr<E> GetInputOrError(AudioUnitElement inElement) AUSDK_RTSAFE
+	{
+		return Inputs().GetElementOrError<E>(inElement);
+	}
+
+	template <typename E = AUOutputElement>
+	ExpectedPtr<E> GetOutputOrError(AudioUnitElement inElement) AUSDK_RTSAFE
+	{
+		return Outputs().GetElementOrError<E>(inElement);
+	}
+
+	// Since almost every AudioUnit has at least one output element, this method is useful for
+	// obtaining output 0 without requiring error checking/handling.
+	template <typename E = AUOutputElement>
+	E& GetOutput0() AUSDK_RTSAFE
+	{
+		auto maybeElem = Outputs().GetElementOrError<E>(0);
+		AUSDK_Assert(maybeElem);
+		return *maybeElem;
+	}
+
+	// Most AudioUnits have at least one input element, so this method is useful for
+	// obtaining input 0 without requiring error checking/handling.
+	template <typename E = AUInputElement>
+	E& GetInput0() AUSDK_RTSAFE
+	{
+		auto maybeElem = Inputs().GetElementOrError<E>(0);
+		AUSDK_Assert(maybeElem);
+		return *maybeElem;
+	}
+
+	ExpectedPtr<AUElement> GetGroupOrError(AudioUnitElement inElement) AUSDK_RTSAFE
+	{
+		return Groups().GetElementOrError(inElement);
+	}
+
+	OSStatus PullInput(UInt32 inBusNumber, AudioUnitRenderActionFlags& ioActionFlags,
+		const AudioTimeStamp& inTimeStamp, UInt32 inNumberFrames) AUSDK_RTSAFE
+	{
+		AUInputElement& input = AUSDK_UnwrapOrReturnError(GetInputOrError(inBusNumber));
 		return input.PullInput(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames);
 	}
 
@@ -365,12 +463,14 @@ public:
 		mUsesFixedBlockSize = inUsesFixedBlockSize;
 	}
 
-	[[nodiscard]] virtual bool InRenderThread() const
+	[[nodiscard]] virtual bool InRenderThread() const AUSDK_RTSAFE
 	{
-		return std::this_thread::get_id() == mRenderThreadID;
+		// Marked unsafe because the library function isn't annotated.
+		return AUSDK_RT_UNSAFE(std::this_thread::get_id()) == mRenderThreadID;
 	}
 
 	/// Says whether an input is connected or has a callback.
+	/// Not realtime-safe; use bus->IsActive().
 	bool HasInput(AudioUnitElement inElement)
 	{
 		auto* const in =
@@ -441,20 +541,20 @@ public:
 	// ________________________________________________________________________
 	// music device/music effect methods
 
-	virtual OSStatus MIDIEvent(
-		UInt32 /*inStatus*/, UInt32 /*inData1*/, UInt32 /*inData2*/, UInt32 /*inOffsetSampleFrame*/)
+	virtual OSStatus MIDIEvent(UInt32 /*inStatus*/, UInt32 /*inData1*/, UInt32 /*inData2*/,
+		UInt32 /*inOffsetSampleFrame*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
 
-	virtual OSStatus SysEx(const UInt8* /*inData*/, UInt32 /*inLength*/)
+	virtual OSStatus SysEx(const UInt8* /*inData*/, UInt32 /*inLength*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
 
 #if AUSDK_HAVE_MIDI2
 	virtual OSStatus MIDIEventList(
-		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/)
+		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -463,13 +563,13 @@ public:
 #if AUSDK_HAVE_MUSIC_DEVICE
 	virtual OSStatus StartNote(MusicDeviceInstrumentID /*inInstrument*/,
 		MusicDeviceGroupID /*inGroupID*/, NoteInstanceID* /*outNoteInstanceID*/,
-		UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& /*inParams*/)
+		UInt32 /*inOffsetSampleFrame*/, const MusicDeviceNoteParams& /*inParams*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
 
 	virtual OSStatus StopNote(MusicDeviceGroupID /*inGroupID*/, NoteInstanceID /*inNoteInstanceID*/,
-		UInt32 /*inOffsetSampleFrame*/)
+		UInt32 /*inOffsetSampleFrame*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
@@ -528,11 +628,13 @@ protected:
 
 	void SetWantsRenderThreadID(bool inFlag);
 
-	OSStatus SetRenderError(OSStatus inErr)
+	OSStatus SetRenderError(OSStatus inErr) AUSDK_RTSAFE
 	{
 		if (inErr != noErr && mLastRenderError == 0) {
 			mLastRenderError = inErr;
+			AUSDK_RT_UNSAFE_BEGIN("FIXME: PropertyChanged is unsafe")
 			PropertyChanged(kAudioUnitProperty_LastRenderError, kAudioUnitScope_Global, 0);
+			AUSDK_RT_UNSAFE_END
 		}
 		return inErr;
 	}
@@ -555,22 +657,31 @@ private:
 	// shared between Render and RenderSlice, inlined to minimize function call overhead
 	OSStatus DoRenderBus(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioTimeStamp& inTimeStamp, UInt32 inBusNumber, AUOutputElement& theOutput,
-		UInt32 inNumberFrames, AudioBufferList& ioData)
+		UInt32 inNumberFrames, AudioBufferList& ioData) AUSDK_RTSAFE
 	{
+		ExpectedPtr<AudioBufferList> maybeBuf;
 		if (ioData.mBuffers[0].mData == nullptr ||
 			(theOutput.WillAllocateBuffer() && Outputs().GetNumberOfElements() > 1)) {
 			// will render into cache buffer
-			theOutput.PrepareBuffer(inNumberFrames);
+			maybeBuf = theOutput.PrepareBufferOrError(inNumberFrames);
 		} else {
 			// will render into caller's buffer
-			theOutput.SetBufferList(ioData);
+			maybeBuf = theOutput.SetBufferListOrError(ioData);
 		}
+		if (!maybeBuf) {
+			return maybeBuf.error();
+		}
+
 		AUSDK_Require_noerr(RenderBus(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames));
+		Expected<void> copyResult;
 		if (ioData.mBuffers[0].mData == nullptr) {
-			theOutput.CopyBufferListTo(ioData);
+			copyResult = theOutput.CopyBufferListToOrError(ioData);
 		} else {
-			theOutput.CopyBufferContentsTo(ioData);
+			copyResult = theOutput.CopyBufferContentsToOrError(ioData);
 			theOutput.InvalidateBufferList();
+		}
+		if (!copyResult) {
+			return copyResult.error();
 		}
 		return noErr;
 	}
@@ -617,7 +728,7 @@ protected:
 	// appropriate immediate or ramped parameter values for the corresponding scopes and elements,
 	// then calling ProcessScheduledSlice() to do the actual DSP for each of these divisions.
 	virtual OSStatus ProcessForScheduledParams(
-		ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData);
+		ParameterEventList& inParamList, UInt32 inFramesToProcess, void* inUserData) AUSDK_RTSAFE;
 
 	//	This method is called (potentially repeatedly) by ProcessForScheduledParams()
 	//	in order to perform the actual DSP required for this portion of the entire buffer
@@ -628,7 +739,7 @@ protected:
 	//  in order to do the appropriate DSP.  AUEffectBase already overrides this for standard
 	//	effect AudioUnits.
 	virtual OSStatus ProcessScheduledSlice(void* /*inUserData*/, UInt32 /*inStartFrameInBuffer*/,
-		UInt32 /*inSliceFramesToProcess*/, UInt32 /*inTotalBufferFrames*/)
+		UInt32 /*inSliceFramesToProcess*/, UInt32 /*inTotalBufferFrames*/) AUSDK_RTSAFE
 	{
 		// default implementation does nothing.
 		return noErr;
@@ -711,6 +822,8 @@ private:
 	HostCallbackInfo mHostCallbackInfo{};
 	Owned<CFStringRef> mContextName;
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

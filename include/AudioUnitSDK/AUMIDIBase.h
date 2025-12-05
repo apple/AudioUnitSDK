@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUMIDIBase_h
 #define AudioUnitSDK_AUMIDIBase_h
@@ -21,6 +21,8 @@
 #endif
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 #if AUSDK_HAVE_MIDI_MAPPING
 /// Abstract interface for parameter MIDI mapping
@@ -46,9 +48,10 @@ public:
 	virtual void ReplaceAllMaps(
 		const AUParameterMIDIMapping* maps, UInt32 count, AUBase& auBase) = 0;
 
-	virtual bool HandleHotMapping(UInt8 status, UInt8 channel, UInt8 data1, AUBase& auBase) = 0;
+	virtual bool HandleHotMapping(
+		UInt8 status, UInt8 channel, UInt8 data1, AUBase& auBase) AUSDK_RTSAFE = 0;
 	virtual bool FindParameterMapEventMatch(UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2,
-		UInt32 inStartFrame, AUBase& auBase) = 0;
+		UInt32 inStartFrame, AUBase& auBase) AUSDK_RTSAFE = 0;
 };
 #endif
 
@@ -71,7 +74,7 @@ public:
 	AUMIDIBase& operator=(AUMIDIBase&&) = delete;
 
 	virtual OSStatus MIDIEvent(
-		UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame)
+		UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame) AUSDK_RTSAFE
 	{
 		const auto strippedStatus = static_cast<UInt8>(inStatus & 0xf0U); // NOLINT
 		const auto channel = static_cast<UInt8>(inStatus & 0x0fU);        // NOLINT
@@ -81,13 +84,13 @@ public:
 
 #if AUSDK_HAVE_MIDI2
 	virtual OSStatus MIDIEventList(
-		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/)
+		UInt32 /*inOffsetSampleFrame*/, const MIDIEventList* /*eventList*/) AUSDK_RTSAFE
 	{
 		return kAudio_UnimplementedError;
 	}
 #endif
 
-	virtual OSStatus SysEx(const UInt8* inData, UInt32 inLength);
+	virtual OSStatus SysEx(const UInt8* inData, UInt32 inLength) AUSDK_RTSAFE;
 
 	virtual OSStatus DelegateGetPropertyInfo(AudioUnitPropertyID inID, AudioUnitScope inScope,
 		AudioUnitElement inElement, UInt32& outDataSize, bool& outWritable);
@@ -98,15 +101,15 @@ public:
 
 protected:
 	// MIDI dispatch
-	virtual OSStatus HandleMIDIEvent(
-		UInt8 inStatus, UInt8 inChannel, UInt8 inData1, UInt8 inData2, UInt32 inStartFrame);
+	virtual OSStatus HandleMIDIEvent(UInt8 inStatus, UInt8 inChannel, UInt8 inData1, UInt8 inData2,
+		UInt32 inStartFrame) AUSDK_RTSAFE;
 	virtual OSStatus HandleNonNoteEvent(
-		UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame);
+		UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame) AUSDK_RTSAFE;
 
 	// Old name
 	AUSDK_DEPRECATED("HandleMIDIEvent")
-	OSStatus HandleMidiEvent(
-		UInt8 inStatus, UInt8 inChannel, UInt8 inData1, UInt8 inData2, UInt32 inStartFrame)
+	OSStatus HandleMidiEvent(UInt8 inStatus, UInt8 inChannel, UInt8 inData1, UInt8 inData2,
+		UInt32 inStartFrame) AUSDK_RTSAFE
 	{
 		return HandleMIDIEvent(inStatus, inChannel, inData1, inData2, inStartFrame);
 	}
@@ -119,43 +122,49 @@ protected:
 #endif
 
 	// channel messages
-	virtual OSStatus HandleNoteOn(
-		UInt8 /*inChannel*/, UInt8 /*inNoteNumber*/, UInt8 /*inVelocity*/, UInt32 /*inStartFrame*/)
+	virtual OSStatus HandleNoteOn(UInt8 /*inChannel*/, UInt8 /*inNoteNumber*/, UInt8 /*inVelocity*/,
+		UInt32 /*inStartFrame*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
-	virtual OSStatus HandleNoteOff(
-		UInt8 /*inChannel*/, UInt8 /*inNoteNumber*/, UInt8 /*inVelocity*/, UInt32 /*inStartFrame*/)
+	virtual OSStatus HandleNoteOff(UInt8 /*inChannel*/, UInt8 /*inNoteNumber*/,
+		UInt8 /*inVelocity*/, UInt32 /*inStartFrame*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
-	virtual OSStatus HandleControlChange(
-		UInt8 /*inChannel*/, UInt8 /*inController*/, UInt8 /*inValue*/, UInt32 /*inStartFrame*/)
+	virtual OSStatus HandleControlChange(UInt8 /*inChannel*/, UInt8 /*inController*/,
+		UInt8 /*inValue*/, UInt32 /*inStartFrame*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
-	virtual OSStatus HandlePitchWheel(
-		UInt8 /*inChannel*/, UInt8 /*inPitch1*/, UInt8 /*inPitch2*/, UInt32 /*inStartFrame*/)
+	virtual OSStatus HandlePitchWheel(UInt8 /*inChannel*/, UInt8 /*inPitch1*/, UInt8 /*inPitch2*/,
+		UInt32 /*inStartFrame*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
 	virtual OSStatus HandleChannelPressure(
-		UInt8 /*inChannel*/, UInt8 /*inValue*/, UInt32 /*inStartFrame*/)
+		UInt8 /*inChannel*/, UInt8 /*inValue*/, UInt32 /*inStartFrame*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
-	virtual OSStatus HandleProgramChange(UInt8 /*inChannel*/, UInt8 /*inValue*/) { return noErr; }
-	virtual OSStatus HandlePolyPressure(
-		UInt8 /*inChannel*/, UInt8 /*inKey*/, UInt8 /*inValue*/, UInt32 /*inStartFrame*/)
+	virtual OSStatus HandleProgramChange(UInt8 /*inChannel*/, UInt8 /*inValue*/) AUSDK_RTSAFE
 	{
 		return noErr;
 	}
-	virtual OSStatus HandleResetAllControllers(UInt8 /*inChannel*/) { return noErr; }
-	virtual OSStatus HandleAllNotesOff(UInt8 /*inChannel*/) { return noErr; }
-	virtual OSStatus HandleAllSoundOff(UInt8 /*inChannel*/) { return noErr; }
+	virtual OSStatus HandlePolyPressure(UInt8 /*inChannel*/, UInt8 /*inKey*/, UInt8 /*inValue*/,
+		UInt32 /*inStartFrame*/) AUSDK_RTSAFE
+	{
+		return noErr;
+	}
+	virtual OSStatus HandleResetAllControllers(UInt8 /*inChannel*/) AUSDK_RTSAFE { return noErr; }
+	virtual OSStatus HandleAllNotesOff(UInt8 /*inChannel*/) AUSDK_RTSAFE { return noErr; }
+	virtual OSStatus HandleAllSoundOff(UInt8 /*inChannel*/) AUSDK_RTSAFE { return noErr; }
 
 	// System messages
-	virtual OSStatus HandleSysEx(const UInt8* /*inData*/, UInt32 /*inLength*/) { return noErr; }
+	virtual OSStatus HandleSysEx(const UInt8* /*inData*/, UInt32 /*inLength*/) AUSDK_RTSAFE
+	{
+		return noErr;
+	}
 
 #if AUSDK_HAVE_MIDI_MAPPING
 	void SetMIDIMapper(const std::shared_ptr<AUMIDIMapper>& mapper) { mMIDIMapper = mapper; }
@@ -167,6 +176,8 @@ private:
 	std::shared_ptr<AUMIDIMapper> mMIDIMapper;
 #endif
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

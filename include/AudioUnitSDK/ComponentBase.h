@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/ComponentBase.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_ComponentBase_h
 #define AudioUnitSDK_ComponentBase_h

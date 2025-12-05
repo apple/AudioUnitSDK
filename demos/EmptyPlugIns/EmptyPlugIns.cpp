@@ -1,8 +1,7 @@
-//
-//  EmptyPlugIns.cpp
-//  EmptyPlugIns
-//
-
+/*!
+    @file        EmptyPlugIns.cpp
+    @copyright    © 2000-2025 Apple Inc. All rights reserved.
+*/
 #include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUEffectBase.h>
 #include <AudioUnitSDK/MusicDeviceBase.h>
@@ -17,7 +16,7 @@ public:
 
 	bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
 
-	bool CanScheduleParameters() const override { return false; }
+	bool CanScheduleParameters() const noexcept AUSDK_RTSAFE override { return false; }
 };
 
 AUSDK_COMPONENT_ENTRY(ausdk::AUBaseFactory, AUBase_Derived)
@@ -43,7 +42,7 @@ public:
 
 	bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
 
-	bool CanScheduleParameters() const override { return false; }
+	bool CanScheduleParameters() const noexcept AUSDK_RTSAFE override { return false; }
 };
 
 AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, MusicDeviceBase_Derived)

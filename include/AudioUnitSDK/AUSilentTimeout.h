@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUSilentTimeout.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUSilentTimeout_h
 #define AudioUnitSDK_AUSilentTimeout_h

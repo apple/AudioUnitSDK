@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/MusicDeviceBase.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUConfig.h>
 
@@ -13,6 +13,7 @@
 
 namespace ausdk {
 
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 MusicDeviceBase::MusicDeviceBase(
 	AudioComponentInstance inInstance, UInt32 numInputs, UInt32 numOutputs, UInt32 numGroups)
@@ -87,19 +88,26 @@ OSStatus MusicDeviceBase::GetInstrumentCount(UInt32& outInstCount) const
 }
 
 OSStatus MusicDeviceBase::HandleNoteOn(
-	UInt8 inChannel, UInt8 inNoteNumber, UInt8 inVelocity, UInt32 inStartFrame)
+	UInt8 inChannel, UInt8 inNoteNumber, UInt8 inVelocity, UInt32 inStartFrame) AUSDK_RTSAFE
 {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wmissing-designated-field-initializers"
 	const MusicDeviceNoteParams params{ .argCount = 2,
 		.mPitch = static_cast<Float32>(inNoteNumber),
 		.mVelocity = static_cast<Float32>(inVelocity) };
+#pragma clang diagnostic pop
 	return StartNote(kMusicNoteEvent_UseGroupInstrument, inChannel, nullptr, inStartFrame, params);
 }
 
 OSStatus MusicDeviceBase::HandleNoteOff(
-	UInt8 inChannel, UInt8 inNoteNumber, UInt8 /*inVelocity*/, UInt32 inStartFrame)
+	UInt8 inChannel, UInt8 inNoteNumber, UInt8 /*inVelocity*/, UInt32 inStartFrame) AUSDK_RTSAFE
 {
 	return StopNote(inChannel, inNoteNumber, inStartFrame);
 }
+
+AUSDK_END_NO_RT_WARNINGS
+
 } // namespace ausdk
 
 #endif // AUSDK_HAVE_MUSIC_DEVICE

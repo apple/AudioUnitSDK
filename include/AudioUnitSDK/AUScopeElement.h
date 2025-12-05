@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUScopeElement.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUScopeElement_h
 #define AudioUnitSDK_AUScopeElement_h
@@ -24,6 +24,8 @@
 #include <vector>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 class AUBase;
 
@@ -75,7 +77,7 @@ class flat_map {
 	using KVPair = std::pair<Key, Value>;
 	using Impl = std::vector<std::pair<Key, Value>>;
 
-	static bool keyless(const KVPair& item, Key k) { return k > item.first; }
+	static bool keyless(const KVPair& item, Key k) AUSDK_RTSAFE { return k > item.first; }
 
 	Impl mImpl;
 
@@ -94,10 +96,13 @@ public:
 
 	[[nodiscard]] const_iterator lower_bound(Key k) const
 	{
-		return std::lower_bound(mImpl.cbegin(), mImpl.cend(), k, keyless);
+		return std::lower_bound(mImpl.cbegin(), mImpl.cend(), k, RTSafeFP{ keyless });
 	}
 
-	iterator lower_bound(Key k) { return std::lower_bound(mImpl.begin(), mImpl.end(), k, keyless); }
+	iterator lower_bound(Key k)
+	{
+		return std::lower_bound(mImpl.begin(), mImpl.end(), k, RTSafeFP{ keyless });
+	}
 
 	[[nodiscard]] const_iterator find(Key k) const
 	{
@@ -178,21 +183,58 @@ public:
 									 : static_cast<UInt32>(mParameters.size());
 	}
 	virtual void GetParameterList(AudioUnitParameterID* outList);
-	[[nodiscard]] bool HasParameterID(AudioUnitParameterID paramID) const;
-	[[nodiscard]] AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID) const;
+	[[nodiscard]] bool HasParameterID(AudioUnitParameterID paramID) const AUSDK_RTSAFE;
 
+	// Use this from the control (non-realtime) context. Throws if the parameter doesn't exist.
+	[[nodiscard]] AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID) const
+	{
+		const auto res = GetParameterOrError(paramID);
+		ThrowExceptionIfUnexpected(res);
+		return *res;
+	}
+
+	// Use this from the render (realtime) context, when you are sure the parameter should exist.
+	[[nodiscard]] AudioUnitParameterValue GetParameterRT(
+		AudioUnitParameterID paramID) const AUSDK_RTSAFE
+	{
+		const auto res = GetParameterOrError(paramID);
+		AUSDK_Assert(res);
+		return *res;
+	}
+
+	// Primitive, returns an error if the parameter does not exist.
+	[[nodiscard]] Expected<AudioUnitParameterValue> GetParameterOrError(
+		AudioUnitParameterID paramID) const AUSDK_RTSAFE;
+
+	// Use this from the control (non-realtime) context. Throws if the parameter doesn't exist.
 	// Only set okWhenInitialized to true when you know the outside world cannot access this
 	// element. Otherwise the parameter map could get corrupted.
-	void SetParameter(AudioUnitParameterID paramID, AudioUnitParameterValue value,
-		bool okWhenInitialized = false);
+	void SetParameter(
+		AudioUnitParameterID paramID, AudioUnitParameterValue value, bool okWhenInitialized = false)
+	{
+		const auto res = SetParameterOrError(paramID, value, okWhenInitialized);
+		ThrowExceptionIfUnexpected(res);
+	}
+
+	// Use this from the render (realtime) context, when you are sure the parameter should exist.
+	void SetParameterRT(AudioUnitParameterID paramID, AudioUnitParameterValue value,
+		bool okWhenInitialized = false) AUSDK_RTSAFE
+	{
+		const auto res = SetParameterOrError(paramID, value, okWhenInitialized);
+		AUSDK_Assert(res);
+	}
+
+	// Primitive, returns an error if the parameter does not exist.
+	Expected<void> SetParameterOrError(AudioUnitParameterID paramID, AudioUnitParameterValue value,
+		bool okWhenInitialized = false) AUSDK_RTSAFE;
 
 	// Only set okWhenInitialized to true when you know the outside world cannot access this
 	// element. Otherwise the parameter map could get corrupted. N.B. This only handles
 	// immediate parameters. Override to implement ramping. Called from
 	// AUBase::ProcessForScheduledParams.
-	virtual void SetScheduledEvent(AudioUnitParameterID paramID,
+	[[nodiscard]] virtual OSStatus SetScheduledEvent(AudioUnitParameterID paramID,
 		const AudioUnitParameterEvent& inEvent, UInt32 inSliceOffsetInBuffer,
-		UInt32 inSliceDurationFrames, bool okWhenInitialized = false);
+		UInt32 inSliceDurationFrames, bool okWhenInitialized = false) AUSDK_RTSAFE;
 
 	[[nodiscard]] AUBase& GetAudioUnit() const noexcept { return mAudioUnit; }
 
@@ -206,7 +248,7 @@ public:
 
 	virtual void UseIndexedParameters(UInt32 inNumberOfParameters);
 
-	virtual AUIOElement* AsIOElement() { return nullptr; }
+	virtual AUIOElement* AsIOElement() AUSDK_RTSAFE { return nullptr; }
 
 private:
 	using ParameterValue = AtomicValue<float>;
@@ -263,25 +305,84 @@ public:
 		Throw(kAudioUnitErr_InvalidPropertyValue);
 	}
 
+	ExpectedPtr<AudioBufferList> PrepareBufferOrError(UInt32 nFrames) AUSDK_RTSAFE
+	{
+		if (mWillAllocate) {
+			return mIOBuffer.PrepareBufferOrError(mStreamFormat, nFrames);
+		}
+		return Unexpected(kAudioUnitErr_InvalidPropertyValue);
+	}
+
 	AudioBufferList& PrepareNullBuffer(UInt32 nFrames)
 	{
 		return mIOBuffer.PrepareNullBuffer(mStreamFormat, nFrames);
 	}
-	AudioBufferList& SetBufferList(AudioBufferList& abl) { return mIOBuffer.SetBufferList(abl); }
+
+	ExpectedPtr<AudioBufferList> PrepareNullBufferOrError(UInt32 nFrames) AUSDK_RTSAFE
+	{
+		return mIOBuffer.PrepareNullBufferOrError(mStreamFormat, nFrames);
+	}
+
+	AudioBufferList& SetBufferList(const AudioBufferList& abl)
+	{
+		return mIOBuffer.SetBufferList(abl);
+	}
+
+	ExpectedPtr<AudioBufferList> SetBufferListOrError(const AudioBufferList& abl) AUSDK_RTSAFE
+	{
+		return mIOBuffer.SetBufferListOrError(abl);
+	}
+
 	void SetBuffer(UInt32 index, AudioBuffer& ab) { mIOBuffer.SetBuffer(index, ab); }
+
+	Expected<void> SetBufferOrError(UInt32 index, AudioBuffer& ab) AUSDK_RTSAFE
+	{
+		return mIOBuffer.SetBufferOrError(index, ab);
+	}
+
 	void InvalidateBufferList() { mIOBuffer.InvalidateBufferList(); }
+
 	[[nodiscard]] AudioBufferList& GetBufferList() const { return mIOBuffer.GetBufferList(); }
 
-	[[nodiscard]] float* GetFloat32ChannelData(UInt32 ch)
+	ExpectedPtr<AudioBufferList> GetBufferListOrError() const AUSDK_RTSAFE
 	{
+		return mIOBuffer.GetBufferListOrError();
+	}
+
+	[[nodiscard]] float* GetFloat32ChannelData(UInt32 ch) const
+	{
+		const auto& abl = GetBufferList();
 		if (IsInterleaved()) {
-			return static_cast<float*>(mIOBuffer.GetBufferList().mBuffers[0].mData) + ch; // NOLINT
+			return static_cast<float*>(abl.mBuffers[0].mData) + ch; // NOLINT
 		}
-		return static_cast<float*>(mIOBuffer.GetBufferList().mBuffers[ch].mData); // NOLINT
+		return static_cast<float*>(abl.mBuffers[ch].mData); // NOLINT
+	}
+
+	// N.B. Returns null pointers on failure.
+	[[nodiscard]] float* GetFloat32ChannelDataRT(UInt32 ch) const AUSDK_RTSAFE
+	{
+		const auto abl = GetBufferListOrError();
+		if (!abl) [[unlikely]] {
+			return nullptr;
+		}
+		if (IsInterleaved()) {
+			return static_cast<float*>(abl->mBuffers[0].mData) + ch; // NOLINT
+		}
+		return static_cast<float*>(abl->mBuffers[ch].mData); // NOLINT
 	}
 
 	void CopyBufferListTo(AudioBufferList& abl) const { mIOBuffer.CopyBufferListTo(abl); }
 	void CopyBufferContentsTo(AudioBufferList& abl) const { mIOBuffer.CopyBufferContentsTo(abl); }
+
+	Expected<void> CopyBufferListToOrError(AudioBufferList& abl) const AUSDK_RTSAFE
+	{
+		return mIOBuffer.CopyBufferListToOrError(abl);
+	}
+	Expected<void> CopyBufferContentsToOrError(AudioBufferList& abl) const AUSDK_RTSAFE
+	{
+		return mIOBuffer.CopyBufferContentsToOrError(abl);
+	}
+
 	[[nodiscard]] bool IsInterleaved() const noexcept { return ASBD::IsInterleaved(mStreamFormat); }
 	[[nodiscard]] UInt32 NumberChannels() const noexcept { return mStreamFormat.mChannelsPerFrame; }
 	[[nodiscard]] UInt32 NumberInterleavedChannels() const noexcept
@@ -299,7 +400,7 @@ public:
 	virtual OSStatus RemoveAudioChannelLayout();
 
 	/*! @fn AsIOElement*/
-	AUIOElement* AsIOElement() override { return this; }
+	AUIOElement* AsIOElement() AUSDK_RTSAFE override { return this; }
 
 protected:
 	AUBufferList& IOBuffer() noexcept { return mIOBuffer; }
@@ -342,8 +443,8 @@ public:
 		SetNumberOfElements(numElements);
 	}
 	virtual void SetNumberOfElements(UInt32 numElements) = 0;
-	virtual UInt32 GetNumberOfElements() = 0;
-	virtual AUElement* GetElement(UInt32 elementIndex) = 0;
+	virtual UInt32 GetNumberOfElements() AUSDK_RTSAFE = 0;
+	virtual AUElement* GetElement(UInt32 elementIndex) AUSDK_RTSAFE = 0;
 
 	[[nodiscard]] AUBase* GetCreator() const noexcept { return mCreator; }
 	[[nodiscard]] AudioUnitScope GetScope() const noexcept { return mScope; }
@@ -383,15 +484,16 @@ public:
 		SetNumberOfElements(numElements);
 	}
 	void SetNumberOfElements(UInt32 numElements);
+
 	[[nodiscard]] UInt32 GetNumberOfElements() const
 	{
 		if (mDelegate != nullptr) {
 			return mDelegate->GetNumberOfElements();
 		}
-
 		return static_cast<UInt32>(mElements.size());
 	}
-	[[nodiscard]] AUElement* GetElement(UInt32 elementIndex) const
+
+	[[nodiscard]] AUElement* GetElement(UInt32 elementIndex) const AUSDK_RTSAFE
 	{
 		if (mDelegate != nullptr) {
 			return mDelegate->GetElement(elementIndex);
@@ -407,9 +509,33 @@ public:
 	[[nodiscard]] AUIOElement* GetIOElement(UInt32 elementIndex) const
 	{
 		AUElement* const element = GetElement(elementIndex);
-		AUIOElement* const ioElement = element != nullptr ? element->AsIOElement() : nullptr;
-		ausdk::ThrowExceptionIf(ioElement == nullptr, kAudioUnitErr_InvalidElement);
-		return ioElement;
+		AUIOElement* const ioel = element != nullptr ? element->AsIOElement() : nullptr;
+		ausdk::ThrowExceptionIf(ioel == nullptr, kAudioUnitErr_InvalidElement);
+		return ioel;
+	}
+
+	template <typename Elem = AUElement>
+	[[nodiscard]] ExpectedPtr<Elem> GetElementOrError(UInt32 elementIndex) const AUSDK_RTSAFE
+	{
+		if (mDelegate != nullptr) {
+			if (auto* elem = mDelegate->GetElement(elementIndex)) {
+				return *static_cast<Elem*>(elem);
+			}
+		} else if (elementIndex < mElements.size()) {
+			if (auto* elem = mElements[elementIndex].get()) {
+				return *static_cast<Elem*>(elem);
+			}
+		}
+		return Unexpected(kAudioUnitErr_InvalidElement);
+	}
+
+	[[nodiscard]] ExpectedPtr<AUIOElement> GetIOElementOrError(UInt32 elementIndex) const
+	{
+		auto& element = AUSDK_UnwrapOrReturnUnexpected(GetElementOrError(elementIndex));
+		if (AUIOElement* const ioel = element.AsIOElement()) {
+			return *ioel;
+		}
+		return Unexpected(kAudioUnitErr_InvalidElement);
 	}
 
 	[[nodiscard]] bool HasElementWithName() const;
@@ -432,6 +558,8 @@ private:
 	ElementVector mElements;
 	AUScopeDelegate* mDelegate{ nullptr };
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

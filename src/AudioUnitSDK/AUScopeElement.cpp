@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUScopeElement.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUBase.h>
 #include <AudioUnitSDK/AUScopeElement.h>
@@ -18,6 +18,8 @@
 #include <utility>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 //_____________________________________________________________________________
 //
@@ -38,7 +40,7 @@ void AUElement::UseIndexedParameters(UInt32 inNumberOfParameters)
 //	Helper method.
 //	returns whether the specified paramID is known to the element
 //
-bool AUElement::HasParameterID(AudioUnitParameterID paramID) const
+bool AUElement::HasParameterID(AudioUnitParameterID paramID) const AUSDK_RTSAFE
 {
 	if (mUseIndexedParameters) {
 		return paramID < mIndexedParameters.size();
@@ -51,26 +53,31 @@ bool AUElement::HasParameterID(AudioUnitParameterID paramID) const
 //
 //	caller assumes that this is actually an immediate parameter
 //
-AudioUnitParameterValue AUElement::GetParameter(AudioUnitParameterID paramID) const
+Expected<AudioUnitParameterValue> AUElement::GetParameterOrError(
+	AudioUnitParameterID paramID) const AUSDK_RTSAFE
 {
 	if (mUseIndexedParameters) {
-		ausdk::ThrowExceptionIf(
-			paramID >= mIndexedParameters.size(), kAudioUnitErr_InvalidParameter);
+		if (paramID >= mIndexedParameters.size()) {
+			return Unexpected{ kAudioUnitErr_InvalidParameter };
+		}
 		return mIndexedParameters[paramID].load(std::memory_order_acquire);
 	}
 	const auto i = mParameters.find(paramID);
-	ausdk::ThrowExceptionIf(i == mParameters.end(), kAudioUnitErr_InvalidParameter);
+	if (i == mParameters.end()) {
+		return Unexpected{ kAudioUnitErr_InvalidParameter };
+	}
 	return i->second.load(std::memory_order_acquire);
 }
 
 //_____________________________________________________________________________
 //
-void AUElement::SetParameter(
-	AudioUnitParameterID paramID, AudioUnitParameterValue inValue, bool okWhenInitialized)
+Expected<void> AUElement::SetParameterOrError(AudioUnitParameterID paramID,
+	AudioUnitParameterValue inValue, bool okWhenInitialized) AUSDK_RTSAFE
 {
 	if (mUseIndexedParameters) {
-		ausdk::ThrowExceptionIf(
-			paramID >= mIndexedParameters.size(), kAudioUnitErr_InvalidParameter);
+		if (paramID >= mIndexedParameters.size()) {
+			return Unexpected{ kAudioUnitErr_InvalidParameter };
+		}
 		mIndexedParameters[paramID].store(inValue, std::memory_order_release);
 	} else {
 		const auto i = mParameters.find(paramID);
@@ -81,34 +88,40 @@ void AUElement::SetParameter(
 				// If a client tries to set an undefined parameter, we could throw as follows,
 				// but this might cause a regression. So it is better to just fail silently.
 				// Throw(kAudioUnitErr_InvalidParameter);
-				AUSDK_LogError(
+				AUSDK_LogError_RT(
 					"Warning: %s SetParameter for undefined param ID %u while initialized. "
 					"Ignoring.",
 					mAudioUnit.GetLoggingString(), static_cast<unsigned>(paramID));
+				return Unexpected{ kAudioUnitErr_InvalidParameter };
 			} else {
 				// create new entry in map for the paramID (only happens first time)
+				AUSDK_RT_UNSAFE_BEGIN("only the first time")
 				mParameters[paramID] = ParameterValue{ inValue };
+				AUSDK_RT_UNSAFE_END
 			}
 		} else {
 			// paramID already exists in map so simply change its value
 			i->second.store(inValue, std::memory_order_release);
 		}
 	}
+	return {};
 }
 
 //_____________________________________________________________________________
 //
-void AUElement::SetScheduledEvent(AudioUnitParameterID paramID,
+OSStatus AUElement::SetScheduledEvent(AudioUnitParameterID paramID,
 	const AudioUnitParameterEvent& inEvent, UInt32 /*inSliceOffsetInBuffer*/,
-	UInt32 /*inSliceDurationFrames*/, bool okWhenInitialized)
+	UInt32 /*inSliceDurationFrames*/, bool okWhenInitialized) AUSDK_RTSAFE
 {
 	if (inEvent.eventType != kParameterEvent_Immediate) {
-		AUSDK_LogError("Warning: %s was passed a ramped parameter event but does not implement "
-					   "them. Ignoring.",
+		AUSDK_LogError_RT("Warning: %s was passed a ramped parameter event but does not implement "
+						  "them. Ignoring.",
 			mAudioUnit.GetLoggingString());
-		return;
+		return -2;
 	}
-	SetParameter(paramID, inEvent.eventValues.immediate.value, okWhenInitialized); // NOLINT
+	const auto res = SetParameterOrError(
+		paramID, inEvent.eventValues.immediate.value, okWhenInitialized); // NOLINT
+	return res ? noErr : res.error();
 }
 
 //_____________________________________________________________________________
@@ -193,7 +206,7 @@ const UInt8* AUElement::RestoreState(const UInt8* state)
 		const auto valueBytes = DeserializeBigUInt32AndAdvance(p);
 		const auto value = std::bit_cast<AudioUnitParameterValue>(valueBytes);
 
-		SetParameter(parameterID, value);
+		std::ignore = SetParameterOrError(parameterID, value);
 	}
 	return p;
 }
@@ -315,8 +328,8 @@ void AUScope::SetNumberOfElements(UInt32 numElements)
 bool AUScope::HasElementWithName() const
 {
 	for (UInt32 i = 0; i < GetNumberOfElements(); ++i) {
-		AUElement* const el = GetElement(i);
-		if ((el != nullptr) && el->HasName()) {
+		const ExpectedPtr<AUElement> el = GetElementOrError(i);
+		if (el && el->HasName()) {
 			return true;
 		}
 	}
@@ -333,8 +346,8 @@ void AUScope::AddElementNamesToDict(CFMutableDictionaryRef inNameDict) const
 			Owned<CFMutableDictionaryRef>::from_create(CFDictionaryCreateMutable(
 				nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
 		for (UInt32 i = 0; i < GetNumberOfElements(); ++i) {
-			AUElement* const el = GetElement(i);
-			if (el != nullptr && el->HasName()) {
+			const ExpectedPtr<AUElement> el = GetElementOrError(i);
+			if (el && el->HasName()) {
 				const auto key = Owned<CFStringRef>::from_create(CFStringCreateWithFormat(
 					nullptr, nullptr, CFSTR("%u"), static_cast<unsigned>(i)));
 				CFDictionarySetValue(*elementDict, *key, *el->GetName());
@@ -370,8 +383,8 @@ std::vector<AudioUnitElement> AUScope::RestoreElementNames(CFDictionaryRef inNam
 			auto* const elName =
 				static_cast<CFStringRef>(CFDictionaryGetValue(inNameDict, keys[i]));
 			if ((elName != nullptr) && (CFGetTypeID(elName) == CFStringGetTypeID())) {
-				AUElement* const element = GetElement(intKey);
-				if (element != nullptr) {
+				const ExpectedPtr<AUElement> element = GetElementOrError(intKey);
+				if (element) {
 					element->SetName(elName);
 					restoredElements.push_back(intKey);
 				}
@@ -386,8 +399,8 @@ void AUScope::SaveState(CFMutableDataRef data) const
 {
 	const AudioUnitElement elementCount = GetNumberOfElements();
 	for (AudioUnitElement elementIndex = 0; elementIndex < elementCount; ++elementIndex) {
-		AUElement* const element = GetElement(elementIndex);
-		const UInt32 parameterCount = element->GetNumberOfParameters();
+		const ExpectedPtr<AUElement> element = GetElementOrError(elementIndex);
+		const UInt32 parameterCount = element ? element->GetNumberOfParameters() : 0u;
 		if (parameterCount > 0) {
 			AppendBytes(data, CFSwapInt32HostToBig(GetScope()));
 			AppendBytes(data, CFSwapInt32HostToBig(elementIndex));
@@ -400,8 +413,8 @@ const UInt8* AUScope::RestoreState(const UInt8* state) const
 {
 	const UInt8* p = state;
 	const auto elementIdx = DeserializeBigUInt32AndAdvance(p);
-	AUElement* const element = GetElement(elementIdx);
-	if (element == nullptr) {
+	const ExpectedPtr<AUElement> element = GetElementOrError(elementIdx);
+	if (!element) {
 		const auto numParams = DeserializeBigUInt32AndAdvance(p);
 		constexpr auto entrySize = sizeof(AudioUnitParameterID) + sizeof(AudioUnitParameterValue);
 		p += numParams * entrySize; // NOLINT
@@ -411,5 +424,7 @@ const UInt8* AUScope::RestoreState(const UInt8* state) const
 
 	return p;
 }
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk

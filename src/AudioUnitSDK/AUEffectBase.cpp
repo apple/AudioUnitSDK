@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUEffectBase.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUEffectBase.h>
 #include <AudioUnitSDK/AUUtility.h>
@@ -16,6 +16,8 @@
 */
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 //_____________________________________________________________________________
 //
@@ -43,9 +45,12 @@ void AUEffectBase::Cleanup()
 //
 OSStatus AUEffectBase::Initialize()
 {
+	AUInputElement& in0 = GetInput0();
+	AUOutputElement& out0 = GetOutput0();
+
 	// get our current numChannels for input and output
-	const auto auNumInputs = static_cast<SInt16>(Input(0).GetStreamFormat().mChannelsPerFrame);
-	const auto auNumOutputs = static_cast<SInt16>(Output(0).GetStreamFormat().mChannelsPerFrame);
+	const auto auNumInputs = static_cast<SInt16>(in0.GetStreamFormat().mChannelsPerFrame);
+	const auto auNumOutputs = static_cast<SInt16>(out0.GetStreamFormat().mChannelsPerFrame);
 
 	// does the unit publish specific information about channel configurations?
 	const AUChannelInfo* auChannelConfigs = nullptr;
@@ -92,10 +97,10 @@ OSStatus AUEffectBase::Initialize()
 	}
 	MaintainKernels();
 
-	mMainOutput = &Output(0);
-	mMainInput = &Input(0);
+	mMainOutput = &out0;
+	mMainInput = &in0;
 
-	const AudioStreamBasicDescription format = GetStreamFormat(kAudioUnitScope_Output, 0);
+	const AudioStreamBasicDescription format = out0.GetStreamFormat();
 	mBytesPerFrame = format.mBytesPerFrame;
 
 	return noErr;
@@ -169,6 +174,7 @@ OSStatus AUEffectBase::SetProperty(AudioUnitPropertyID inID, AudioUnitScope inSc
 			return noErr;
 		}
 		case kAudioUnitProperty_InPlaceProcessing:
+            AUSDK_Require(inDataSize == sizeof(UInt32), kAudioUnitErr_InvalidPropertyValue);
 			mProcessesInPlace = Deserialize<UInt32>(inData) != 0;
 			return noErr;
 		default:
@@ -234,7 +240,7 @@ OSStatus AUEffectBase::ChangeStreamFormat(AudioUnitScope inScope, AudioUnitEleme
 //	according to the timestamps on the scheduled parameters...
 //
 OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartFrameInBuffer*/,
-	UInt32 inSliceFramesToProcess, UInt32 /*inTotalBufferFrames*/)
+	UInt32 inSliceFramesToProcess, UInt32 /*inTotalBufferFrames*/) AUSDK_RTSAFE
 {
 	const ScheduledProcessParams& sliceParams = *static_cast<ScheduledProcessParams*>(inUserData);
 
@@ -277,16 +283,24 @@ OSStatus AUEffectBase::ProcessScheduledSlice(void* inUserData, UInt32 /*inStartF
 // ____________________________________________________________________________
 //
 
-OSStatus AUEffectBase::Render(
-	AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp, UInt32 nFrames)
+OSStatus AUEffectBase::Render(AudioUnitRenderActionFlags& ioActionFlags,
+	const AudioTimeStamp& inTimeStamp, UInt32 nFrames) AUSDK_RTSAFE
 {
-	AUSDK_Require(HasInput(0), kAudioUnitErr_NoConnection);
+	AUSDK_Require(mMainInput->IsActive(), kAudioUnitErr_NoConnection);
 
 	AUSDK_Require_noerr(
 		mMainInput->PullInput(ioActionFlags, inTimeStamp, 0 /* element */, nFrames));
 
+	AudioBufferList& inputBufferList =
+		AUSDK_UnwrapOrReturnError(mMainInput->GetBufferListOrError());
+	AudioBufferList& outputBufferList =
+		AUSDK_UnwrapOrReturnError(mMainOutput->GetBufferListOrError());
+
 	if (ProcessesInPlace() && mMainOutput->WillAllocateBuffer()) {
-		mMainOutput->SetBufferList(mMainInput->GetBufferList());
+		const auto setResult = mMainOutput->SetBufferListOrError(inputBufferList);
+		if (!setResult) {
+			return setResult.error();
+		}
 	}
 
 	OSStatus result = noErr;
@@ -295,20 +309,19 @@ OSStatus AUEffectBase::Render(
 		// leave silence bit alone
 
 		if (!ProcessesInPlace()) {
-			mMainInput->CopyBufferContentsTo(mMainOutput->GetBufferList());
+			auto val = mMainInput->CopyBufferContentsToOrError(outputBufferList);
+			if (!val) {
+				result = val.error();
+			}
 		}
 	} else {
 		auto& paramEventList = GetParamEventList();
 
 		if (paramEventList.empty()) {
 			// this will read/write silence bit
-			result = ProcessBufferLists(
-				ioActionFlags, mMainInput->GetBufferList(), mMainOutput->GetBufferList(), nFrames);
+			result = ProcessBufferLists(ioActionFlags, inputBufferList, outputBufferList, nFrames);
 		} else {
 			// deal with scheduled parameters...
-
-			AudioBufferList& inputBufferList = mMainInput->GetBufferList();
-			AudioBufferList& outputBufferList = mMainOutput->GetBufferList();
 
 			ScheduledProcessParams processParams{ .actionFlags = &ioActionFlags,
 				.inputBufferList = &inputBufferList,
@@ -339,7 +352,7 @@ OSStatus AUEffectBase::Render(
 	}
 
 	if (((ioActionFlags & kAudioUnitRenderAction_OutputIsSilence) != 0u) && !ProcessesInPlace()) {
-		AUBufferList::ZeroBuffer(mMainOutput->GetBufferList());
+		AUBufferList::ZeroBuffer(outputBufferList);
 	}
 
 	return result;
@@ -347,7 +360,8 @@ OSStatus AUEffectBase::Render(
 
 
 OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFlags,
-	const AudioBufferList& inBuffer, AudioBufferList& outBuffer, UInt32 inFramesToProcess)
+	const AudioBufferList& inBuffer, AudioBufferList& outBuffer,
+	UInt32 inFramesToProcess) AUSDK_RTSAFE
 {
 	if (ShouldBypassEffect()) {
 		return noErr;
@@ -364,8 +378,8 @@ OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFl
 		}
 
 		bool ioSilence = silentInput;
-		const AudioBuffer* const srcBuffer = &inBuffer.mBuffers[channel]; // NOLINT subscript
-		AudioBuffer* const destBuffer = &outBuffer.mBuffers[channel];     // NOLINT subscript
+		const AudioBuffer* const srcBuffer = &inBuffer.mBuffers[channel];   // NOLINT subscript
+		const AudioBuffer* const destBuffer = &outBuffer.mBuffers[channel]; // NOLINT subscript
 
 		kernel->Process(static_cast<const Float32*>(srcBuffer->mData),
 			static_cast<Float32*>(destBuffer->mData), inFramesToProcess, ioSilence);
@@ -378,8 +392,6 @@ OSStatus AUEffectBase::ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFl
 	return noErr;
 }
 
-Float64 AUEffectBase::GetSampleRate() { return Output(0).GetStreamFormat().mSampleRate; }
-
-UInt32 AUEffectBase::GetNumberOfChannels() { return Output(0).GetStreamFormat().mChannelsPerFrame; }
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk

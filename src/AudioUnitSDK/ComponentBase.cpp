@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/ComponentBase.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 // self
 #include <AudioUnitSDK/AUUtility.h>

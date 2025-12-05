@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIBase.cpp
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #include <AudioUnitSDK/AUConfig.h>
 
@@ -12,6 +12,8 @@
 #include <CoreMIDI/CoreMIDI.h>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 // MIDI CC data bytes
 constexpr uint8_t kMIDIController_AllSoundOff = 120u;
@@ -122,7 +124,9 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 	case kAudioUnitProperty_AddParameterMIDIMapping: {
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
-		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
+        AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
+        const auto validSize = (inDataSize > 0) && (inDataSize % sizeof(AUParameterMIDIMapping)) == 0;
+        AUSDK_Require(validSize, kAudioUnitErr_InvalidPropertyValue);
 		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
 		mMIDIMapper->AddParameterMapping(
 			maps.data(), static_cast<UInt32>(maps.size()), mAUBaseInstance);
@@ -135,6 +139,8 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
+        const auto validSize = (inDataSize > 0) && (inDataSize % sizeof(AUParameterMIDIMapping)) == 0;
+        AUSDK_Require(validSize, kAudioUnitErr_InvalidPropertyValue);
 		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
 		bool didChange = false;
 		mMIDIMapper->RemoveParameterMapping(
@@ -150,6 +156,7 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
+        AUSDK_Require(inDataSize == sizeof(AUParameterMIDIMapping), kAudioUnitErr_InvalidPropertyValue);
 		const auto map = Deserialize<AUParameterMIDIMapping>(inData);
 		mMIDIMapper->SetHotMapping(map);
 		return noErr;
@@ -159,6 +166,8 @@ OSStatus AUMIDIBase::DelegateSetProperty(AudioUnitPropertyID inID, AudioUnitScop
 		AUSDK_Require(mMIDIMapper, kAudioUnitErr_InvalidProperty);
 		AUSDK_Require(inScope == kAudioUnitScope_Global, kAudioUnitErr_InvalidScope);
 		AUSDK_Require(inElement == 0, kAudioUnitErr_InvalidElement);
+        const auto validSize = (inDataSize > 0) && (inDataSize % sizeof(AUParameterMIDIMapping)) == 0;
+        AUSDK_Require(validSize, kAudioUnitErr_InvalidPropertyValue);
 		const auto maps = DeserializeArray<AUParameterMIDIMapping>(inData, inDataSize);
 		mMIDIMapper->ReplaceAllMaps(maps.data(), static_cast<UInt32>(maps.size()), mAUBaseInstance);
 		return noErr;
@@ -177,7 +186,7 @@ constexpr uint8_t MIDIStatusNibbleValue(uint8_t status) noexcept { return (statu
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 OSStatus AUMIDIBase::HandleMIDIEvent(
-	UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame)
+	UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame) AUSDK_RTSAFE
 {
 	AUSDK_Require(mAUBaseInstance.IsInitialized(), kAudioUnitErr_Uninitialized);
 
@@ -186,8 +195,10 @@ OSStatus AUMIDIBase::HandleMIDIEvent(
 	// process the MIDI event or not. The default behaviour is to continue on with the MIDI event.
 	if (mMIDIMapper) {
 		if (mMIDIMapper->HandleHotMapping(status, channel, data1, mAUBaseInstance)) {
+			AUSDK_RT_UNSAFE_BEGIN("FIXME: PropertyChanged is unsafe")
 			mAUBaseInstance.PropertyChanged(
 				kAudioUnitProperty_HotMapParameterMIDIMapping, kAudioUnitScope_Global, 0);
+			AUSDK_RT_UNSAFE_END
 		} else {
 			mMIDIMapper->FindParameterMapEventMatch(
 				status, channel, data1, data2, inStartFrame, mAUBaseInstance);
@@ -212,7 +223,7 @@ OSStatus AUMIDIBase::HandleMIDIEvent(
 }
 
 OSStatus AUMIDIBase::HandleNonNoteEvent(
-	UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame)
+	UInt8 status, UInt8 channel, UInt8 data1, UInt8 data2, UInt32 inStartFrame) AUSDK_RTSAFE
 {
 	switch (MIDIStatusNibbleValue(status)) {
 	case kMIDICVStatusPitchBend:
@@ -248,7 +259,7 @@ OSStatus AUMIDIBase::HandleNonNoteEvent(
 	}
 }
 
-OSStatus AUMIDIBase::SysEx(const UInt8* inData, UInt32 inLength)
+OSStatus AUMIDIBase::SysEx(const UInt8* inData, UInt32 inLength) AUSDK_RTSAFE
 {
 	AUSDK_Require(mAUBaseInstance.IsInitialized(), kAudioUnitErr_Uninitialized);
 
@@ -256,5 +267,7 @@ OSStatus AUMIDIBase::SysEx(const UInt8* inData, UInt32 inLength)
 }
 
 } // namespace ausdk
+
+AUSDK_END_NO_RT_WARNINGS
 
 #endif // AUSDK_HAVE_MIDI

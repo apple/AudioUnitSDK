@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUMIDIEffectBase.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUMIDIEffectBase_h
 #define AudioUnitSDK_AUMIDIEffectBase_h
@@ -13,6 +13,8 @@
 
 namespace ausdk {
 
+AUSDK_BEGIN_NO_RT_WARNINGS
+
 /*!
 	@class	AUMIDIEffectBase
 	@brief	Subclass of AUEffectBase and AUMIDIBase, providing an abstract base class for
@@ -21,12 +23,12 @@ namespace ausdk {
 class AUMIDIEffectBase : public AUEffectBase, public AUMIDIBase {
 public:
 	explicit AUMIDIEffectBase(AudioComponentInstance inInstance, bool inProcessesInPlace = false);
-	OSStatus MIDIEvent(
-		UInt32 inStatus, UInt32 inData1, UInt32 inData2, UInt32 inOffsetSampleFrame) override
+	OSStatus MIDIEvent(UInt32 inStatus, UInt32 inData1, UInt32 inData2,
+		UInt32 inOffsetSampleFrame) AUSDK_RTSAFE override
 	{
 		return AUMIDIBase::MIDIEvent(inStatus, inData1, inData2, inOffsetSampleFrame);
 	}
-	OSStatus SysEx(const UInt8* inData, UInt32 inLength) override
+	OSStatus SysEx(const UInt8* inData, UInt32 inLength) AUSDK_RTSAFE override
 	{
 		return AUMIDIBase::SysEx(inData, inLength);
 	}
@@ -37,6 +39,8 @@ public:
 	OSStatus SetProperty(AudioUnitPropertyID inID, AudioUnitScope inScope,
 		AudioUnitElement inElement, const void* inData, UInt32 inDataSize) override;
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

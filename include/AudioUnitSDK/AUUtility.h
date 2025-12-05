@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUUtility.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUUtility_h
 #define AudioUnitSDK_AUUtility_h
@@ -19,7 +19,9 @@
 // std
 #include <bitset>
 #include <climits>
+#include <cstdlib>
 #include <cstring>
+#include <expected>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -51,6 +53,9 @@
 	}
 #endif
 
+// logging from realtime thread
+#define AUSDK_LogError_RT(...) AUSDK_RT_UNSAFE(AUSDK_LogError(__VA_ARGS__)) /* NOLINT macro */
+
 #define AUSDK_Catch(result) /* NOLINT(cppcoreguidelines-macro-usage) */                            \
 	catch (const ausdk::AUException& exc) { (result) = exc.mError; }                               \
 	catch (const std::bad_alloc&) { (result) = kAudio_MemFullError; }                              \
@@ -65,18 +70,197 @@
 		}                                                                                          \
 	} while (0) /* NOLINT */
 
-#define AUSDK_Require_noerr(expr) /* NOLINT(cppcoreguidelines-macro-usage) */                      \
+// Check an expected; if it holds an error, return that error.
+#define AUSDK_RequireExpected(exp) /* NOLINT(cppcoreguidelines-macro-usage) */                     \
+	AUSDK_Require(exp, exp.error())
+
+// Evaluate an expression resulting in an Expected<T>. If the Expected contains an error, return
+// the error. Otherwise, unwrap the Expected.
+#define AUSDK_UnwrapOrReturnError(_expression)                                                     \
+	*({                                                                                            \
+		const auto e = (_expression);                                                              \
+		if (!e) [[unlikely]]                                                                       \
+			return e.error();                                                                      \
+		e;                                                                                         \
+	})
+
+// TODO: deprecate this macro because it swallows the error
+#define AUSDK_UnwrapOrReturnVoid(_expression)                                                      \
+	*({                                                                                            \
+		const auto e = (_expression);                                                              \
+		if (!e) [[unlikely]]                                                                       \
+			return;                                                                                \
+		e;                                                                                         \
+	})
+
+#define AUSDK_CheckReturnError(_expression)                                                        \
+	({                                                                                             \
+		const auto e = (_expression);                                                              \
+		if (!e) [[unlikely]]                                                                       \
+			return e.error();                                                                      \
+	})
+
+// Evaluate an expression resulting in an Expected<T>. If the Expected contains an error, return
+// the error as an Unexpected. Otherwise, unwrap the Expected.
+#define AUSDK_UnwrapOrReturnUnexpected(_expression)                                                \
+	*({                                                                                            \
+		const auto e = (_expression);                                                              \
+		if (!e) [[unlikely]]                                                                       \
+			return ausdk::Unexpected{ e.error() };                                                 \
+		e;                                                                                         \
+	})
+
+#define AUSDK_Require_noerr(_expression) /* NOLINT(cppcoreguidelines-macro-usage) */               \
 	do {                                                                                           \
-		if (const auto status_tmp_macro_detail_ = (expr); status_tmp_macro_detail_ != noErr) {     \
+		const auto status_tmp_macro_detail_ = (_expression);                                       \
+		if (status_tmp_macro_detail_ != noErr) [[unlikely]] {                                      \
 			return status_tmp_macro_detail_;                                                       \
 		}                                                                                          \
 	} while (0)
+
+#define AUSDK_Assert(_expression)                                                                  \
+	({                                                                                             \
+		const auto e = (_expression);                                                              \
+		if (!e) [[unlikely]]                                                                       \
+			std::abort();                                                                          \
+	})
+
+
+// clang-format off
+
+// The "loose" realtime-safety contract: exceptions are allowed.
+#ifndef AUSDK_LOOSE_RT_SAFETY
+	#define AUSDK_LOOSE_RT_SAFETY 1
+#endif
+
+// AUSDK adopts `noexcept` independently of `[[clang::nonblocking]]`; suppress diagnostics.
+#define AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS \
+	_Pragma("clang diagnostic push")                                           \
+	_Pragma("clang diagnostic ignored \"-Wunknown-warning-option\"")           \
+	_Pragma("clang diagnostic ignored \"-Wperf-constraint-implies-noexcept\"")
+#define AUSDK_END_NO_RT_NOEXCEPT_WARNINGS  \
+	_Pragma("clang diagnostic pop")
+
+//  ASAN inserts blocking function calls in otherwise nonblocking functions.
+#if defined(__has_feature) && __has_feature(address_sanitizer)
+#define AUSDK_BEGIN_NO_RT_WARNINGS                                              \
+    AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS                                         \
+    _Pragma("clang diagnostic ignored \"-Wfunction-effects\"")
+#else
+#define AUSDK_BEGIN_NO_RT_WARNINGS                                              \
+    AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS
+#endif
+
+#define AUSDK_END_NO_RT_WARNINGS                                                \
+    AUSDK_END_NO_RT_NOEXCEPT_WARNINGS
+
+/*!
+	@macro	AUSDK_RTSAFE_TYPE
+	@brief	A function type which is guaranteed / required to be realtime safe.
+*/
+#if defined(__has_attribute) && __has_attribute(nonblocking)
+#  ifdef __cplusplus
+#    define AUSDK_RTSAFE_TYPE [[clang::nonblocking]]
+#  else
+#    define AUSDK_RTSAFE_TYPE __attribute__((nonblocking))
+#  endif
+#else
+#    define AUSDK_RTSAFE_TYPE
+#endif
+
+#ifndef AUSDK_RTSAFE_SECTION
+#  define AUSDK_RTSAFE_SECTION
+#endif
+
+/*!
+	@macro	AUSDK_RTSAFE
+	@brief	Declares a function as `nonblocking`, with a section attribute.
+	
+	Example placement:
+		`void func(int param) AUSDK_RTSAFE;`
+*/
+#define AUSDK_RTSAFE AUSDK_RTSAFE_TYPE AUSDK_RTSAFE_SECTION
+
+#if AUSDK_LOOSE_RT_SAFETY
+	#define AUSDK_RTSAFE_LOOSE AUSDK_RTSAFE
+#else
+	#define AUSDK_RTSAFE_LOOSE
+#endif
+
+/*!
+	@macro	AUSDK_RTSAFE_LAMBDA
+	@brief	Declares a lambda as `nonblocking`, with a section attribute.
+	
+	Example placement:
+		`auto lambda = [captures](int param) AUSDK_RTSAFE_LAMBDA -> int { ... };`
+	
+	Note: It's weird and annoying that this has to be different from `AUSDK_RTSAFE`.
+*/
+#define AUSDK_RTSAFE_LAMBDA AUSDK_RTSAFE_SECTION AUSDK_RTSAFE_TYPE
+
+/*!
+	@macro	AUSDK_RT_UNSAFE_BEGIN
+	@brief	Begins a region of code as exempt from nonblocking checks.
+
+	N.B. Every use of this is a maintenance and safety liability; use as a last resort.
+*/
+#define AUSDK_RT_UNSAFE_BEGIN(reason)                                \
+	_Pragma("clang diagnostic push")                                 \
+	_Pragma("clang diagnostic ignored \"-Wunknown-warning-option\"") \
+	_Pragma("clang diagnostic ignored \"-Wfunction-effects\"")
+
+/*!
+	@macro	AUSDK_RT_UNSAFE_END
+	@brief	Ends a region of code which is exempt from nonblocking checks.
+*/
+#define AUSDK_RT_UNSAFE_END \
+	_Pragma("clang diagnostic pop")
+
+/*!
+	@macro	AUSDK_RT_UNSAFE_END
+	@brief	Disables nonblocking checks during the evaluation of the expression.
+
+	N.B. Every use of this is a maintenance and safety liability; use as a last resort.
+*/
+#define AUSDK_RT_UNSAFE(...)                                         \
+	_Pragma("clang diagnostic push")                                 \
+	_Pragma("clang diagnostic ignored \"-Wunknown-warning-option\"") \
+	_Pragma("clang diagnostic ignored \"-Wfunction-effects\"")       \
+	__VA_ARGS__                                                      \
+	_Pragma("clang diagnostic pop")
+
+// clang-format on
 
 #pragma mark -
 
 // -------------------------------------------------------------------------------------------------
 
 namespace ausdk {
+
+// -------------------------------------------------------------------------------------------------
+
+/// A wrapper to preserve the nonblocking attribute on a function pointer. Copied from the
+/// nonblocking proposal.
+template <typename>
+class RTSafeFP;
+
+template <typename R, typename... Args>
+class RTSafeFP<R(Args...)> {
+public:
+	using impl_t = R (*)(Args...) AUSDK_RTSAFE_TYPE;
+
+private:
+	impl_t mImpl;
+
+public:
+	RTSafeFP(impl_t f) : mImpl{ f } {}
+
+	R operator()(Args... args) const { return mImpl(std::forward<Args>(args)...); }
+};
+
+// deduction guide (copied from std::function)
+template <class R, class... ArgTypes>
+RTSafeFP(R (*)(ArgTypes...)) -> RTSafeFP<R(ArgTypes...)>;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -91,28 +275,38 @@ public:
 	const OSStatus mError;
 };
 
+AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS
+[[noreturn]] inline void Throw(OSStatus err) AUSDK_RTSAFE_LOOSE
+{
+	AUSDK_RT_UNSAFE_BEGIN("Can only log and throw under loose contract")
+	AUSDK_LogError("throwing %d", static_cast<int>(err));
+	throw AUException{ err };
+	AUSDK_RT_UNSAFE_END
+}
+AUSDK_END_NO_RT_NOEXCEPT_WARNINGS
+
 inline void ThrowExceptionIf(bool condition, OSStatus err)
 {
-	if (condition) {
-		AUSDK_LogError("throwing %d", static_cast<int>(err));
-		throw AUException{ err };
+	if (condition) [[unlikely]] {
+		Throw(err);
 	}
 }
 
-[[noreturn]] inline void Throw(OSStatus err)
+AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS
+[[noreturn]] inline void ThrowQuiet(OSStatus err) AUSDK_RTSAFE_LOOSE
 {
-	AUSDK_LogError("throwing %d", static_cast<int>(err));
+	AUSDK_RT_UNSAFE_BEGIN("Can only throw under loose realtime contract")
 	throw AUException{ err };
+	AUSDK_RT_UNSAFE_END
 }
+AUSDK_END_NO_RT_NOEXCEPT_WARNINGS
 
 inline void ThrowQuietIf(bool condition, OSStatus err)
 {
-	if (condition) {
-		throw AUException{ err };
+	if (condition) [[unlikely]] {
+		ThrowQuiet(err);
 	}
 }
-
-[[noreturn]] inline void ThrowQuiet(OSStatus err) { throw AUException{ err }; }
 
 // -------------------------------------------------------------------------------------------------
 
@@ -426,11 +620,13 @@ constexpr uint32_t IsBogusAudioBufferList(const AudioBufferList& abl)
 #pragma mark HostTime
 
 #if AUSDK_HAVE_MACH_TIME
+AUSDK_BEGIN_NO_RT_WARNINGS
+
 /// Utility functions relating to Mach absolute time.
 namespace HostTime {
 
 /// Returns the current host time
-inline uint64_t Current() { return mach_absolute_time(); }
+inline uint64_t Current() AUSDK_RTSAFE { return AUSDK_RT_UNSAFE(mach_absolute_time()); }
 
 /// Returns the frequency of the host timebase, in ticks per second.
 inline double Frequency()
@@ -443,6 +639,7 @@ inline double Frequency()
 }
 
 } // namespace HostTime
+AUSDK_END_NO_RT_WARNINGS
 #endif // AUSDK_HAVE_MACH_TIME
 
 // -------------------------------------------------------------------------------------------------
@@ -583,6 +780,40 @@ inline std::string MakeStringFrom4CC(uint32_t in4CC)
 		}
 	}
 	return std::string{ string, sizeof(in4CC) };
+}
+
+using Unexpected = std::unexpected<OSStatus>;
+
+template <typename T>
+using Expected = std::expected<T, OSStatus>;
+
+// expected<reference_wrapper<T>> is unweildy.
+// Instead, extend expected<T*> (with a guarantee that the pointer is non-null).
+template <typename T>
+class [[nodiscard]] ExpectedPtr : public std::expected<T*, OSStatus> {
+public:
+	using Base = std::expected<T*, OSStatus>;
+
+	// Caution: default-constructed to null ptr.
+	ExpectedPtr() = default;
+
+	// Construct with a reference, to enforce non-null guarantee (unless default-constructed).
+	ExpectedPtr(T& ref) : Base{ &ref } {} // NOLINT implicit OK
+
+	ExpectedPtr(Unexpected&& u) : Base{ u } {} // NOLINT implicit OK
+
+	// unchecked (parallel to expected::operator*); use operator bool to verify
+	T* operator->() const { return Base::operator*(); }
+	T* get() const { return Base::operator*(); }
+	T& operator*() const { return *get(); }
+};
+
+template <typename T>
+inline void ThrowExceptionIfUnexpected(const Expected<T>& e)
+{
+	if (!e) [[unlikely]] {
+		Throw(e.error());
+	}
 }
 
 } // namespace ausdk

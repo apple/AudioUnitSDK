@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUThreadSafeList.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUThreadSafeList_h
 #define AudioUnitSDK_AUThreadSafeList_h
@@ -17,6 +17,9 @@
 #include <type_traits>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
+
 /*!
 	@class	AUAtomicStack
 	@brief	Linked list LIFO or FIFO (popAllReversed) stack, elements are pushed and popped
@@ -229,7 +232,7 @@ public:
 	}
 
 	// These must be called from only one thread
-	void Update() noexcept
+	void Update() AUSDK_RTSAFE
 	{
 		NodeStack reversed;
 		Node* event{};
@@ -302,7 +305,7 @@ public:
 					}
 				} break;
 				default:
-					AUSDK_LogError("Unknown AUThreadSafeList event type");
+					AUSDK_LogError_RT("Unknown AUThreadSafeList event type");
 					break;
 				}
 			}
@@ -334,6 +337,8 @@ private:
 	NodeStack mPendingList; // add or remove requests - threadsafe
 	NodeStack mFreeList;    // free nodes for reuse - threadsafe
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUInputElement.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUInputElement_h
 #define AudioUnitSDK_AUInputElement_h
@@ -16,6 +16,8 @@
 #include <AudioToolbox/AudioUnitProperties.h>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 /*!
 	@class	AUInputElement
@@ -40,11 +42,13 @@ public:
 	{
 		return mInputType == EInputType::FromConnection;
 	}
+
 	OSStatus PullInput(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		AudioUnitElement inElement, UInt32 nFrames);
+		AudioUnitElement inElement, UInt32 nFrames) AUSDK_RTSAFE;
+
 	OSStatus PullInputWithBufferList(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames,
-		AudioBufferList& inBufferList);
+		AudioBufferList& inBufferList) AUSDK_RTSAFE;
 
 protected:
 	void Disconnect();
@@ -63,7 +67,7 @@ private:
 
 inline OSStatus AUInputElement::PullInputWithBufferList(AudioUnitRenderActionFlags& ioActionFlags,
 	const AudioTimeStamp& inTimeStamp, AudioUnitElement inElement, UInt32 nFrames,
-	AudioBufferList& inBufferList)
+	AudioBufferList& inBufferList) AUSDK_RTSAFE
 {
 	OSStatus theResult = noErr;
 
@@ -90,6 +94,8 @@ inline OSStatus AUInputElement::PullInputWithBufferList(AudioUnitRenderActionFla
 #endif
 	return theResult;
 }
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

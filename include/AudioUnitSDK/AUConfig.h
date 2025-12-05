@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUConfig.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 
 #ifndef AudioUnitSDK_AUConfig_h
@@ -24,12 +24,17 @@ enum { noErr = 0 };
 #include <CoreAudio/CoreAudioTypes.h>
 #endif
 
+// This optional prefix header allows external customization of the build.
+#if defined(__has_include) && __has_include("AudioUnitSDKPrefix.h")
+#include "AudioUnitSDKPrefix.h"
+#endif
+
 // -------------------------------------------------------------------------------------------------
 #pragma mark -
 #pragma mark Version
 
 #define AUSDK_VERSION_MAJOR 1
-#define AUSDK_VERSION_MINOR 3
+#define AUSDK_VERSION_MINOR 4
 #define AUSDK_VERSION_PATCH 0
 
 // -------------------------------------------------------------------------------------------------

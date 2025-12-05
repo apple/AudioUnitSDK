@@ -1,6 +1,6 @@
 /*!
 	@file		AudioUnitSDK/AUEffectBase.h
-	@copyright	© 2000-2024 Apple Inc. All rights reserved.
+	@copyright	© 2000-2025 Apple Inc. All rights reserved.
 */
 #ifndef AudioUnitSDK_AUEffectBase_h
 #define AudioUnitSDK_AUEffectBase_h
@@ -15,6 +15,8 @@
 #include <memory>
 
 namespace ausdk {
+
+AUSDK_BEGIN_NO_RT_WARNINGS
 
 class AUKernelBase;
 
@@ -48,7 +50,20 @@ public:
 		const AudioStreamBasicDescription& inPrevFormat,
 		const AudioStreamBasicDescription& inNewFormat) override;
 	OSStatus Render(AudioUnitRenderActionFlags& ioActionFlags, const AudioTimeStamp& inTimeStamp,
-		UInt32 nFrames) override;
+		UInt32 nFrames) AUSDK_RTSAFE override;
+
+	// If a kernel implements ResetRT, this can be used to reset with a realtime-safety assertion.
+	template <typename Kernel>
+	OSStatus ResetRT(AudioUnitScope /*inScope*/, AudioUnitElement /*inElement*/) AUSDK_RTSAFE
+	{
+		for (auto& kernel : mKernelList) {
+			if (kernel) {
+				static_cast<Kernel*>(kernel.get())->ResetRT();
+			}
+		}
+		// Note that AUBase::Reset() is a no-op but not declared safe, so we bypass it.
+		return noErr;
+	}
 
 	// our virtual methods
 
@@ -58,28 +73,33 @@ public:
 	virtual std::unique_ptr<AUKernelBase> NewKernel() { return {}; }
 	OSStatus ProcessBufferLists(AudioUnitRenderActionFlags& ioActionFlags,
 		const AudioBufferList& inBuffer, AudioBufferList& outBuffer,
-		UInt32 inFramesToProcess) override;
+		UInt32 inFramesToProcess) AUSDK_RTSAFE override;
 
 	// convenience format accessors (use output 0's format)
-	Float64 GetSampleRate();
-	UInt32 GetNumberOfChannels();
+	Float64 GetSampleRate() AUSDK_RTSAFE { return GetOutput0().GetStreamFormat().mSampleRate; }
+	UInt32 GetNumberOfChannels() AUSDK_RTSAFE
+	{
+		return GetOutput0().GetStreamFormat().mChannelsPerFrame;
+	}
 
 	// convenience wrappers for accessing parameters in the global scope
+	// TODO: duplication with AUBase?
+
 	using AUBase::SetParameter;
 
-	void SetParameter(AudioUnitParameterID paramID, AudioUnitParameterValue value)
+	void SetParameter(AudioUnitParameterID paramID, AudioUnitParameterValue value) AUSDK_RTSAFE
 	{
-		Globals()->SetParameter(paramID, value);
+		Globals()->SetParameterRT(paramID, value);
 	}
 
 	using AUBase::GetParameter;
 
-	AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID)
+	AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID) AUSDK_RTSAFE
 	{
-		return Globals()->GetParameter(paramID);
+		return Globals()->GetParameterRT(paramID);
 	}
 
-	[[nodiscard]] bool CanScheduleParameters() const override { return true; }
+	[[nodiscard]] bool CanScheduleParameters() const AUSDK_RTSAFE override { return true; }
 
 	// This is used for the property value - to reflect to the UI if an effect is bypassed
 	[[nodiscard]] bool IsBypassEffect() const noexcept { return mBypassEffect; }
@@ -97,7 +117,7 @@ public:
 	};
 
 	OSStatus ProcessScheduledSlice(void* inUserData, UInt32 inStartFrameInBuffer,
-		UInt32 inSliceFramesToProcess, UInt32 inTotalBufferFrames) override;
+		UInt32 inSliceFramesToProcess, UInt32 inTotalBufferFrames) AUSDK_RTSAFE override;
 
 	[[nodiscard]] bool ProcessesInPlace() const noexcept { return mProcessesInPlace; }
 	void SetProcessesInPlace(bool inProcessesInPlace) noexcept
@@ -112,7 +132,7 @@ protected:
 
 	// This is used in the render call to see if an effect is bypassed
 	// It can return a different status than IsBypassEffect (though it MUST take that into account)
-	virtual bool ShouldBypassEffect() { return IsBypassEffect(); }
+	virtual bool ShouldBypassEffect() AUSDK_RTSAFE { return IsBypassEffect(); }
 
 	[[nodiscard]] AUKernelBase* GetKernel(UInt32 index) const
 	{
@@ -176,11 +196,11 @@ public:
 	virtual void Reset() {}
 
 	virtual void Process(const Float32* /*inSourceP*/, Float32* /*inDestP*/,
-		UInt32 /*inFramesToProcess*/, bool& /*ioSilence*/) = 0;
+		UInt32 /*inFramesToProcess*/, bool& /*ioSilence*/) AUSDK_RTSAFE = 0;
 
-	Float64 GetSampleRate() { return mAudioUnit.GetSampleRate(); }
+	Float64 GetSampleRate() AUSDK_RTSAFE { return mAudioUnit.GetSampleRate(); }
 
-	AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID)
+	AudioUnitParameterValue GetParameter(AudioUnitParameterID paramID) AUSDK_RTSAFE
 	{
 		return mAudioUnit.GetParameter(paramID);
 	}
@@ -192,6 +212,8 @@ protected:
 	AUEffectBase& mAudioUnit; // NOLINT protected
 	UInt32 mChannelNum = 0;   // NOLINT protected
 };
+
+AUSDK_END_NO_RT_WARNINGS
 
 } // namespace ausdk
 

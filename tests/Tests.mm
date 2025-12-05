@@ -1,6 +1,6 @@
 /*!
 	@file		Tests.mm
-	@copyright	© 2020-2024 Apple Inc. All rights reserved.
+	@copyright	© 2020-2025 Apple Inc. All rights reserved.
 */
 
 #import <XCTest/XCTest.h>
@@ -113,7 +113,7 @@
 	ausdk::Serialize<float>(value, valueAddress);
 	XCTAssertEqual(std::memcmp(&value, valueAddress, sizeof(value)), 0);
 
-	const std::vector<const int> values({ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+	const std::vector<int> values({ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
 	data.clear();
 	data.resize(std::span(values).size_bytes());
 	ausdk::Serialize(std::span(values), data.data());
@@ -132,15 +132,15 @@
 	std::memcpy(valueAddress, &value, sizeof(value));
 	XCTAssertEqual(ausdk::Deserialize<float>(valueAddress), value);
 
-	const std::vector<const int> values({ 9, 8, 7, 6, 5, 4, 3, 2, 1 });
+	const std::vector<int> values({ 9, 8, 7, 6, 5, 4, 3, 2, 1 });
 	XCTAssertTrue(std::ranges::equal(
 		ausdk::DeserializeArray<int>(values.data(), std::span(values).size_bytes()), values));
 }
 
 - (void)testDeserializeBigUInt32AndAdvance
 {
-	const std::array<const UInt32, 5> data{ CFSwapInt32HostToBig(1), CFSwapInt32HostToBig(11),
-		CFSwapInt32HostToBig(1'000'000'000), CFSwapInt32HostToBig(0), CFSwapInt32HostToBig(99) };
+	const auto data = std::to_array({ CFSwapInt32HostToBig(1), CFSwapInt32HostToBig(11),
+		CFSwapInt32HostToBig(1'000'000'000), CFSwapInt32HostToBig(0), CFSwapInt32HostToBig(99) });
 	auto pointer = reinterpret_cast<const UInt8*>(data.data());
 	XCTAssertEqual(ausdk::DeserializeBigUInt32AndAdvance(pointer), 1u);
 	XCTAssertEqual(ausdk::DeserializeBigUInt32AndAdvance(pointer), 11u);
@@ -155,5 +155,90 @@
 	XCTAssertEqual(ausdk::MakeStringFrom4CC('abcd'), "abcd");
 	XCTAssertEqual(ausdk::MakeStringFrom4CC('1234' + 0x7F), "123.");
 }
+
+#if AUSDK_LOOSE_RT_SAFETY
+
+namespace {
+
+class ThrowsDuringRender : public ausdk::AUBase {
+public:
+	ThrowsDuringRender() : ausdk::AUBase(nullptr, 1, 1) {}
+
+	bool CanScheduleParameters() const noexcept AUSDK_RTSAFE override { return false; }
+	bool StreamFormatWritable(AudioUnitScope, AudioUnitElement) override { return true; }
+
+    AUSDK_BEGIN_NO_RT_NOEXCEPT_WARNINGS
+	virtual OSStatus Render(AudioUnitRenderActionFlags& /*ioActionFlags*/,
+		const AudioTimeStamp& /*inTimeStamp*/, UInt32 /*inNumberFrames*/) AUSDK_RTSAFE override
+	{
+		throw OSStatus(42);
+	}
+
+	virtual OSStatus ProcessBufferLists(AudioUnitRenderActionFlags&, const AudioBufferList&,
+		AudioBufferList&, UInt32) AUSDK_RTSAFE override
+	{
+		throw OSStatus(43);
+	}
+    AUSDK_END_NO_RT_NOEXCEPT_WARNINGS
+};
+
+class ThrowsDuringRenderFixture {
+public:
+	constexpr static UInt32 kRenderFrameCount = 512;
+
+	ThrowsDuringRender uut;
+	ausdk::AUBufferList buf;
+
+	ThrowsDuringRenderFixture()
+	{
+		uut.DoPostConstructor();
+
+		auto inputProc = +[](void*, AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32,
+							  UInt32, AudioBufferList*) -> OSStatus { return noErr; };
+
+		uut.Input(0).SetInputCallback(inputProc, nullptr);
+
+		OSStatus err = uut.DoInitialize();
+		XCTAssertEqual(err, noErr);
+
+		AudioStreamBasicDescription format = uut.GetStreamFormat(kAudioUnitScope_Output, 0);
+		buf.Allocate(format, kRenderFrameCount);
+		buf.PrepareNullBuffer(format, kRenderFrameCount);
+	}
+
+	void Render()
+	{
+		AudioUnitRenderActionFlags flags = 0;
+		AudioTimeStamp ts{};
+
+		OSStatus err = uut.DoRender(flags, ts, 0, kRenderFrameCount, buf.GetBufferList());
+		XCTAssertEqual(err, 42);
+	}
+
+	void Process()
+	{
+		AudioUnitRenderActionFlags flags = 0;
+		AudioTimeStamp ts{};
+
+		OSStatus err = uut.DoProcess(flags, ts, kRenderFrameCount, buf.GetBufferList());
+		XCTAssertEqual(err, 43);
+	}
+};
+
+} // anonymous namespace
+
+- (void)testThrowsDuringRender
+{
+	ThrowsDuringRenderFixture f;
+	f.Render();
+}
+
+- (void)testThrowsDuringProcess
+{
+	ThrowsDuringRenderFixture f;
+	f.Process();
+}
+
+#endif // AUSDK_LOOSE_RT_SAFETY
 
 @end
