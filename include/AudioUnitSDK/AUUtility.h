@@ -77,21 +77,21 @@
 // Evaluate an expression resulting in an Expected<T>. If the Expected contains an error, return
 // the error. Otherwise, unwrap the Expected.
 #define AUSDK_UnwrapOrReturnError(_expression)                                                     \
-	*({                                                                                            \
+	(*({                                                                                           \
 		const auto e = (_expression);                                                              \
 		if (!e) [[unlikely]]                                                                       \
 			return e.error();                                                                      \
 		e;                                                                                         \
-	})
+	}))
 
 // TODO: deprecate this macro because it swallows the error
 #define AUSDK_UnwrapOrReturnVoid(_expression)                                                      \
-	*({                                                                                            \
+	(*({                                                                                           \
 		const auto e = (_expression);                                                              \
 		if (!e) [[unlikely]]                                                                       \
 			return;                                                                                \
 		e;                                                                                         \
-	})
+	}))
 
 #define AUSDK_CheckReturnError(_expression)                                                        \
 	({                                                                                             \
@@ -103,12 +103,12 @@
 // Evaluate an expression resulting in an Expected<T>. If the Expected contains an error, return
 // the error as an Unexpected. Otherwise, unwrap the Expected.
 #define AUSDK_UnwrapOrReturnUnexpected(_expression)                                                \
-	*({                                                                                            \
+	(*({                                                                                           \
 		const auto e = (_expression);                                                              \
 		if (!e) [[unlikely]]                                                                       \
 			return ausdk::Unexpected{ e.error() };                                                 \
 		e;                                                                                         \
-	})
+	}))
 
 #define AUSDK_Require_noerr(_expression) /* NOLINT(cppcoreguidelines-macro-usage) */               \
 	do {                                                                                           \
