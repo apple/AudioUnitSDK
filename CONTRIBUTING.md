@@ -12,4 +12,4 @@ By submitting a pull request, you represent that you have the right to license y
 
 ## Code of Conduct
 
-We ask that all community members read and observe our [Code of Conduct](CODE_OF_CONDUCT.md).
+We ask that all community members read and observe our [Code of Conduct](https://github.com/apple/.github/blob/main/CODE_OF_CONDUCT.md).
